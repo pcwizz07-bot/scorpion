@@ -72,10 +72,10 @@ export const quickAnalyze = action({
     const result = await investigatorAgent.streamText(
       ctx,
       { threadId },
-      { messageId },
+      { promptMessageId: messageId },
       { saveStreamDeltas: { throttleMs: 200, chunking: "word" } },
     );
-    const response = await result.consumeStream();
-    return response.text;
+    await result.consumeStream();
+    return messageId;
   },
 });
