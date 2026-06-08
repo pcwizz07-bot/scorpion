@@ -10,6 +10,7 @@
 
 import type * as agent from "../agent.js";
 import type * as alerts from "../alerts.js";
+import type * as chat from "../chat.js";
 import type * as devices from "../devices.js";
 import type * as observations from "../observations.js";
 import type * as sessions from "../sessions.js";
@@ -25,6 +26,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   agent: typeof agent;
   alerts: typeof alerts;
+  chat: typeof chat;
   devices: typeof devices;
   observations: typeof observations;
   sessions: typeof sessions;

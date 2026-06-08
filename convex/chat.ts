@@ -1,4 +1,4 @@
-import { internalAction, mutation, query } from "./_generated/server";
+import { action, internalAction, mutation, query } from "./_generated/server";
 import { internal, components } from "./_generated/api";
 import { listUIMessages, syncStreams, vStreamArgs } from "@convex-dev/agent";
 import { paginationOptsValidator } from "convex/server";
