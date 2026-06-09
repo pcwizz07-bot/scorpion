@@ -6,7 +6,6 @@ import { api } from '../../convex/_generated/api'
 import { useState } from 'react'
 
 export const Route = createFileRoute('/')({
-  head: () => ({ meta: [{ title: 'IMSI Catcher - Anti-Poaching Dashboard' }] }),
   component: Home,
 })
 
