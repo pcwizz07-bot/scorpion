@@ -60,6 +60,7 @@ SVC
     LAT="${3:--25.7461}"
     LNG="${4:-28.1881}"
     SERVER="${5:-http://10.10.20.118:3000}"
+    CONVEX="${6:-http://10.14.13.250:3210}"
 
     echo "=== Installing Dungbeetle Pi Node: $PI_NAME ==="
 
@@ -99,6 +100,7 @@ Environment=PI_NAME=${PI_NAME}
 Environment=LAT=${LAT}
 Environment=LNG=${LNG}
 Environment=SERVER=${SERVER}
+Environment=CONVEX=${CONVEX}
 [Install]
 WantedBy=multi-user.target
 SVC

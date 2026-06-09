@@ -14,7 +14,7 @@ CONFIG = {
     "lat": float(os.environ.get("LAT", "-25.7461")),
     "lng": float(os.environ.get("LNG", "28.1881")),
     "server": os.environ.get("SERVER", "http://10.10.20.118:3000"),
-    "convex": os.environ.get("CONVEX", "http://127.0.0.1:3210"),
+    "convex": os.environ.get("CONVEX", "http://10.14.13.250:3210"),
     "gsm_freq": os.environ.get("FREQ", "947.0M"),
     "scan_interval": 600,
     "heartbeat_interval": 60,
@@ -48,14 +48,13 @@ def register_device():
             "firmwareVersion": "dungbeetle-v1",
         }).encode()
         req = urllib.request.Request(
-            f"{CONFIG['server']}/api/devices/register",
+            f"{CONFIG['convex']}/api/mutation?functionName=devices:register",
             data=payload,
             headers={"Content-Type": "application/json"},
-            method="POST",
         )
         resp = urllib.request.urlopen(req, timeout=10)
         data = json.loads(resp.read().decode())
-        device_id = data.get("deviceId", "")
+        device_id = data
         log(f"Registered as {CONFIG['device_name']} -> {device_id}")
         return True
     except Exception as e:
@@ -68,8 +67,8 @@ def send_heartbeat():
             try:
                 payload = json.dumps({"deviceId": device_id}).encode()
                 req = urllib.request.Request(
-                    f"{CONFIG['server']}/api/devices/heartbeat",
-                    data=payload, headers={"Content-Type": "application/json"}, method="POST",
+                    f"{CONFIG['convex']}/api/mutation?functionName=devices:heartbeat",
+                    data=payload, headers={"Content-Type": "application/json"},
                 )
                 urllib.request.urlopen(req, timeout=5)
             except: pass
@@ -91,8 +90,8 @@ def send_observation(imsi, mcc="", mnc="", country="", brand="", operator="", si
             "signalDbm": signal,
         }).encode()
         req = urllib.request.Request(
-            f"{CONFIG['server']}/api/observations/imsi",
-            data=payload, headers={"Content-Type": "application/json"}, method="POST",
+            f"{CONFIG['convex']}/api/mutation?functionName=observations:recordObservation",
+            data=payload, headers={"Content-Type": "application/json"},
         )
         urllib.request.urlopen(req, timeout=5)
         return True
