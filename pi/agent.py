@@ -14,7 +14,7 @@ CONFIG = {
     "lat": float(os.environ.get("LAT", "-25.7461")),
     "lng": float(os.environ.get("LNG", "28.1881")),
     "server": os.environ.get("SERVER", "http://10.10.20.118:3000"),
-    "convex": os.environ.get("CONVEX", "http://10.14.13.250:3210"),
+    "convex": os.environ.get("CONVEX", "http://10.14.13.250:3001"),
     "gsm_freq": os.environ.get("FREQ", "947.0M"),
     "scan_interval": 600,
     "heartbeat_interval": 60,
@@ -48,7 +48,7 @@ def register_device():
             "firmwareVersion": "dungbeetle-v1",
         }).encode()
         req = urllib.request.Request(
-            f"{CONFIG['convex']}/api/mutation?functionName=devices:register",
+            f"{CONFIG['convex']}/api/devices/register",
             data=payload,
             headers={"Content-Type": "application/json"},
         )
@@ -67,7 +67,7 @@ def send_heartbeat():
             try:
                 payload = json.dumps({"deviceId": device_id}).encode()
                 req = urllib.request.Request(
-                    f"{CONFIG['convex']}/api/mutation?functionName=devices:heartbeat",
+                    f"{CONFIG['convex']}/api/devices/heartbeat",
                     data=payload, headers={"Content-Type": "application/json"},
                 )
                 urllib.request.urlopen(req, timeout=5)
@@ -90,7 +90,7 @@ def send_observation(imsi, mcc="", mnc="", country="", brand="", operator="", si
             "signalDbm": signal,
         }).encode()
         req = urllib.request.Request(
-            f"{CONFIG['convex']}/api/mutation?functionName=observations:recordObservation",
+            f"{CONFIG['convex']}/api/observations/imsi",
             data=payload, headers={"Content-Type": "application/json"},
         )
         urllib.request.urlopen(req, timeout=5)

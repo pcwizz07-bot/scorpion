@@ -50,9 +50,30 @@ SVC
     sudo systemctl enable --now dungbeetle-convex
     sudo systemctl enable --now dungbeetle-dashboard
 
+    # Install API Proxy for Pi devices
+    sudo cp server/api-proxy.py /opt/dungbeetle/api-proxy.py 2>/dev/null || \
+      sudo curl -sL "https://raw.githubusercontent.com/pcwizz07-bot/dungbeetle/master/server/api-proxy.py" \
+      -o /opt/dungbeetle/api-proxy.py
+    sudo tee /etc/systemd/system/dungbeetle-api.service > /dev/null << 'SVC'
+[Unit]
+Description=Dungbeetle API Proxy
+After=network.target
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /opt/dungbeetle/api-proxy.py
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+SVC
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now dungbeetle-api
+
     echo "=== DONE ==="
     echo "Dashboard: http://$(hostname -I | awk '{print $1}'):3000"
     echo "Convex:    http://127.0.0.1:3210"
+    echo "API Proxy: http://$(hostname -I | awk '{print $1}'):3001"
     ;;
 
   pi)
@@ -60,7 +81,7 @@ SVC
     LAT="${3:--25.7461}"
     LNG="${4:-28.1881}"
     SERVER="${5:-http://10.10.20.118:3000}"
-    CONVEX="${6:-http://10.14.13.250:3210}"
+    CONVEX="${6:-http://10.14.13.250:3001}"
 
     echo "=== Installing Dungbeetle Pi Node: $PI_NAME ==="
 
