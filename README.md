@@ -1,142 +1,52 @@
-# IMSI Catcher - Anti-Poaching Surveillance Network
+# Dungbeetle 🪲
 
-A distributed IMSI (International Mobile Subscriber Identity) detection system using **3 Raspberry Pi 3B** devices with **RTL-SDR (RTL2832U)** dongles for triangulation and tracking on wildlife reserves. Detected IMSI data flows to a central dashboard with an **AI-powered intelligence analyst**.
+IMSI surveillance network for anti-poaching. 3x Raspberry Pi 3B + RTL-SDR triangulation, Convex backend, AI investigator via Ollama.
 
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Pi-1-North  │     │  Pi-2-East   │     │ Pi-3-South   │
-│  RTL-SDR     │     │  RTL-SDR     │     │  RTL-SDR     │
-│  IMSI Agent  │     │  IMSI Agent  │     │  IMSI Agent  │
-└──────┬──────┘     └──────┬──────┘     └──────┬──────┘
-       │                    │                    │
-       └────────────────────┼────────────────────┘
-                            │ HTTP/WebSocket
-                    ┌───────▼──────────┐
-                    │ Proxmox VM       │
-                    │ ───────────────  │
-                    │ Dashboard (React)│
-                    │ Convex Backend   │
-                    │ AI Investigator  │
-                    │ (OpenRouter/GPT) │
-                    └──────────────────┘
+Pi-1-North ─┐
+Pi-2-East  ─┼──→ VM Server (Convex + Dashboard) ←── You (browser)
+Pi-3-South ─┘        │
+                     └── Ollama AI (10.10.20.118:11434)
 ```
 
 ## One-Click Install
 
-### Prerequisites
-
-**Server (Proxmox VM)**:
-- Ubuntu/Debian VM (2GB+ RAM, 20GB disk)
-- Ports 80/443 accessible
-
-**Per Raspberry Pi**:
-- Raspberry Pi 3B (or better)
-- RTL-SDR (RTL2832U) USB dongle + antenna
-- 16GB+ SD card with Raspberry Pi OS Lite
-- Power supply (battery pack recommended for field use)
-
-### Install Server
-
+### Server (Proxmox VM - Ubuntu 24.04)
 ```bash
-curl -sL https://raw.githubusercontent.com/YOUR_USER/imsi-catcher/main/deploy/install.sh | bash -s server \
-  YOUR_GITHUB_USER/imsi-catcher your-domain.com YOUR_OPENROUTER_API_KEY
+curl -sL https://raw.githubusercontent.com/pcwizz07-bot/dungbeetle/master/deploy/install.sh | sudo bash -s server
 ```
+Dashboard at `http://YOUR_VM_IP:3000`
 
-### Install Pi Devices (after server is deployed)
-
-On each Raspberry Pi:
-
+### Pi (Raspberry Pi 3B + RTL-SDR)
 ```bash
-curl -sL https://raw.githubusercontent.com/YOUR_USER/imsi-catcher/main/deploy/install.sh | bash -s pi \
-  Pi-1-North -1.2921 36.8219 1800 http://YOUR_SERVER:3000
+curl -sL https://raw.githubusercontent.com/pcwizz07-bot/dungbeetle/master/deploy/install.sh | sudo bash -s pi \
+  Pi-1-North -25.7461 28.1881 http://YOUR_VM_IP:3000
 ```
 
-### Configuration Options
+## Auto-start Services
 
-| Pi Parameter | Description | Example |
-|-------------|-------------|---------|
-| Pi-Name | Unique device name | `Pi-1-North` |
-| LAT | Latitude | `-1.2921` |
-| LNG | Longitude | `36.8219` |
-| ALT | Altitude (meters) | `1800` |
-| SERVER_URL | Server URL | `http://192.168.1.100:3000` |
+**On the VM**, the installer creates:
+- `dungbeetle-convex.service` — Convex backend (auto-starts on boot)
+- `dungbeetle-dashboard.service` — Dashboard (auto-starts on boot)
 
-## Features
+**On each Pi**, the installer creates:
+- `dungbeetle-pi.service` — Agent that captures IMSIs and sends to server
 
-### 📡 IMSI Detection
-Captures IMSI, TMSI, MCC, MNC from GSM paging messages using `grgsm_livemon` + custom parser
+## South Africa GSM Frequencies
 
-### 📍 Triangulation
-Uses signal strength from 3+ Pi devices to estimate phone positions with confidence scoring
+The agent auto-scans common SA frequencies:
+- Vodacom/MTN primary: 947.0M, 935.2M, 940.0M
+- Cell C: 925.0M, 930.0M
+- DCS1800: 1805.0M
 
-### 🤖 AI Intelligence Analyst
-- Analyzes movement patterns across the reserve
-- Flags suspicious IMSIs and unusual activity
-- Generates actionable intelligence reports
-- Correlates sightings across all devices
-- Powered by OpenRouter (GPT-4o-mini or any model)
-
-### 📊 Dashboard
-- Real-time IMSI feed
-- Deployment map with device status
-- Alert management
-- Device health monitoring
-
-## Manual Setup
-
-### Server
+## Logs
 ```bash
-git clone https://github.com/YOUR_USER/imsi-catcher.git
-cd imsi-catcher
-npm install
-npx convex dev --once
-npx convex env set OPENROUTER_API_KEY your_key
-npm run dev
+# VM
+journalctl -u dungbeetle-convex -f
+journalctl -u dungbeetle-dashboard -f
+
+# Pi
+journalctl -u dungbeetle-pi -f
 ```
-
-### Pi (Manual)
-```bash
-sudo apt install python3-numpy python3-scipy python3-scapy gr-gsm rtl-sdr
-git clone https://github.com/Oros42/IMSI-catcher.git
-cd IMSI-catcher
-
-# Find GSM frequencies
-grgsm_scanner
-
-# Terminal 1 - Live monitor
-grgsm_livemon -f 925.4M
-
-# Terminal 2 - IMSI capture
-sudo python3 simple_IMSI-catcher.py -s
-```
-
-## Scripts
-
-```
-deploy/
-├── install.sh          # One-click installer (server or pi)
-├── server-deploy.sh    # Proxmox VM deployment
-└── pi-deploy.sh        # Raspberry Pi deployment
-server/
-└── api-server.mjs      # HTTP API for device communication
-```
-
-## Tech Stack
-
-- **Frontend**: TanStack Start (React), Tailwind CSS v4
-- **Backend**: Convex (real-time database, server functions)
-- **AI**: @convex-dev/agent + OpenRouter (@openrouter/ai-sdk-provider)
-- **SDR**: RTL-SDR (RTL2832U) + gr-gsm
-- **Deployment**: Systemd services, Nginx, Docker-ready
-
-## Credits
-
-- [Oros42/IMSI-catcher](https://github.com/Oros42/IMSI-catcher) - Original IMSI detection engine
-- Osmocom & gr-gsm community - GSM decoding libraries
-- RTL-SDR project - Affordable SDR hardware
-
-## License
-
-MIT - Built for wildlife conservation and anti-poaching efforts.
