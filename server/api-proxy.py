@@ -38,16 +38,25 @@ class ProxyHandler(BaseHTTPRequestHandler):
         
         fn_name, fn_type = route
         try:
-            convex_url = f"{CONVEX_URL}/api/{fn_type}?functionName={fn_name}"
-            req = urllib.request.Request(convex_url, data=body,
+            # Convex API expects: {"path": "module:fn", "args": {...}}
+            # Pi sends the args directly, so we wrap them
+            args = json.loads(body.decode()) if body else {}
+            convex_body = json.dumps({"path": fn_name, "args": args}).encode()
+            
+            convex_url = f"{CONVEX_URL}/api/{fn_type}"
+            req = urllib.request.Request(convex_url, data=convex_body,
                 headers={"Content-Type": "application/json"})
             resp = urllib.request.urlopen(req, timeout=10)
-            result = resp.read().decode()
+            resp_data = json.loads(resp.read().decode())
+            
+            # Extract the value from Convex's response wrapper: {status: "success", value: ...}
+            result = resp_data.get("value", resp_data)
+            
             self.send_response(200)
             self.send_cors()
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(result.encode())
+            self.wfile.write(json.dumps(result).encode())
         except Exception as e:
             self.send_response(500)
             self.send_cors()
