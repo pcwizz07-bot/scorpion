@@ -38,23 +38,26 @@ def log(msg):
             f.write(line + "\n")
     except: pass
 
+def _convex_call(fn_name, args):
+    """Call a Convex mutation via HTTP API"""
+    url = f"{CONFIG['convex']}/api/mutation"
+    body = json.dumps({"path": fn_name, "args": args}).encode()
+    req = urllib.request.Request(url, data=body,
+        headers={"Content-Type": "application/json"})
+    resp = urllib.request.urlopen(req, timeout=10)
+    data = json.loads(resp.read().decode())
+    return data.get("value")
+
 def register_device():
     global device_id
     try:
-        payload = json.dumps({
+        args = {
             "name": CONFIG["device_name"],
             "lat": CONFIG["lat"],
             "lng": CONFIG["lng"],
             "firmwareVersion": "dungbeetle-v1",
-        }).encode()
-        req = urllib.request.Request(
-            f"{CONFIG['convex']}/api/devices/register",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        resp = urllib.request.urlopen(req, timeout=10)
-        data = json.loads(resp.read().decode())
-        device_id = data
+        }
+        device_id = _convex_call("devices:register", args)
         log(f"Registered as {CONFIG['device_name']} -> {device_id}")
         return True
     except Exception as e:
@@ -65,12 +68,7 @@ def send_heartbeat():
     while running:
         if device_id:
             try:
-                payload = json.dumps({"deviceId": device_id}).encode()
-                req = urllib.request.Request(
-                    f"{CONFIG['convex']}/api/devices/heartbeat",
-                    data=payload, headers={"Content-Type": "application/json"},
-                )
-                urllib.request.urlopen(req, timeout=5)
+                _convex_call("devices:heartbeat", {"deviceId": device_id})
             except: pass
         time.sleep(CONFIG["heartbeat_interval"])
 
@@ -78,7 +76,7 @@ def send_observation(imsi, mcc="", mnc="", country="", brand="", operator="", si
     if not device_id:
         return False
     try:
-        payload = json.dumps({
+        args = {
             "deviceId": device_id,
             "sensorId": device_id,
             "imsi": imsi.replace(" ", ""),
@@ -88,12 +86,8 @@ def send_observation(imsi, mcc="", mnc="", country="", brand="", operator="", si
             "brand": brand,
             "operator": operator,
             "signalDbm": signal,
-        }).encode()
-        req = urllib.request.Request(
-            f"{CONFIG['convex']}/api/observations/imsi",
-            data=payload, headers={"Content-Type": "application/json"},
-        )
-        urllib.request.urlopen(req, timeout=5)
+        }
+        _convex_call("observations:recordObservation", args)
         return True
     except Exception as e:
         log(f"Send failed: {e}")
