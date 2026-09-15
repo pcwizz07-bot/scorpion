@@ -1,220 +1,160 @@
 #!/usr/bin/env python3
-"""
-Dungbeetle Pi Agent - IMSI Catcher for Anti-Poaching
-Runs on Raspberry Pi 3B + RTL-SDR dongle
-Captures GSM IMSIs and sends to central server
-"""
-import json, time, os, sys, socket, struct, subprocess, threading, urllib.request, urllib.error
-from datetime import datetime, timezone
+"""Scorpion Pi node agent: entry point, config, threads, signal handling."""
+import json
+import os
 import signal
+import sys
+import threading
+import time
 
-# ===== CONFIG =====
-CONFIG = {
-    "device_name": os.environ.get("PI_NAME", "Pi-$(hostname)"),
-    "lat": float(os.environ.get("LAT", "-25.7461")),
-    "lng": float(os.environ.get("LNG", "28.1881")),
-    "server": os.environ.get("SERVER", "http://10.10.20.118:3000"),
-    "convex": os.environ.get("CONVEX", "http://10.14.13.250:3001"),
-    "gsm_freq": os.environ.get("FREQ", "947.0M"),
-    "scan_interval": 600,
-    "heartbeat_interval": 60,
-}
-LOG_FILE = "/var/log/dungbeetle-agent.log"
-IMSI_FILE = "/tmp/imsi-output.txt"
-PID_FILE = "/var/run/dungbeetle-agent.pid"
-device_id = None
-running = True
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_PARENT_DIR = os.path.dirname(_THIS_DIR)
+if _PARENT_DIR not in sys.path:
+    sys.path.insert(0, _PARENT_DIR)
 
-# Known SA frequencies to try (Vodacom, MTN, Cell C, Telkom)
-SA_FREQUENCIES = ["947.0M", "935.2M", "940.0M", "942.0M", "945.0M",
-                  "950.0M", "925.0M", "930.0M", "955.0M", "960.0M", "1805.0M", "1820.0M"]
+from pi.node import capture, gnss
+from pi.node.config import DEFAULT_CONFIG_PATH, load_config
+from pi.node.spool import Spool
+from pi.node.transport import Transport, TransportAuthError, TransportRetryableError, flush, next_backoff_seconds
 
-def log(msg):
-    ts = datetime.now(timezone.utc).isoformat()
-    line = f"[{ts}] {msg}"
-    print(line, flush=True)
+IDLE_POLL_S = 2.0
+
+
+def load_state(path: str) -> dict | None:
+    if not os.path.isfile(path):
+        return None
     try:
-        with open(LOG_FILE, "a") as f:
-            f.write(line + "\n")
-    except: pass
+        with open(path) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
 
-def _convex_call(fn_name, args):
-    """Call a Convex mutation via HTTP API"""
-    url = f"{CONFIG['convex']}/api/mutation"
-    body = json.dumps({"path": fn_name, "args": args}).encode()
-    req = urllib.request.Request(url, data=body,
-        headers={"Content-Type": "application/json"})
-    resp = urllib.request.urlopen(req, timeout=10)
-    data = json.loads(resp.read().decode())
-    return data.get("value")
 
-def register_device():
-    global device_id
-    try:
-        args = {
-            "name": CONFIG["device_name"],
-            "lat": CONFIG["lat"],
-            "lng": CONFIG["lng"],
-            "firmwareVersion": "dungbeetle-v1",
-        }
-        device_id = _convex_call("devices:register", args)
-        log(f"Registered as {CONFIG['device_name']} -> {device_id}")
-        return True
-    except Exception as e:
-        log(f"Registration failed: {e}")
-        return False
+def save_state(path: str, state: dict) -> None:
+    dir_ = os.path.dirname(path)
+    if dir_:
+        os.makedirs(dir_, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(state, f)
+    os.chmod(path, 0o600)
 
-def send_heartbeat():
-    while running:
-        if device_id:
-            try:
-                _convex_call("devices:heartbeat", {"deviceId": device_id})
-            except: pass
-        time.sleep(CONFIG["heartbeat_interval"])
 
-def send_observation(imsi, mcc="", mnc="", country="", brand="", operator="", signal=-75):
-    if not device_id:
-        return False
-    try:
-        args = {
-            "deviceId": device_id,
-            "sensorId": device_id,
-            "imsi": imsi.replace(" ", ""),
-            "mcc": mcc or "000",
-            "mnc": mnc or "00",
-            "country": country,
-            "brand": brand,
-            "operator": operator,
-            "signalDbm": signal,
-        }
-        _convex_call("observations:recordObservation", args)
-        return True
-    except Exception as e:
-        log(f"Send failed: {e}")
-        return False
+def provision_if_needed(cfg, transport: Transport, state_path: str) -> tuple:
+    state = load_state(state_path)
+    if state is not None and "device_id" in state and "device_token" in state:
+        return state["device_id"], state["device_token"]
 
-def parse_imsi_file():
-    """Watch the IMSI output file for new entries"""
-    if not os.path.exists(IMSI_FILE):
-        open(IMSI_FILE, "w").close()
-    last_size = 0
-    while running:
-        time.sleep(3)
-        try:
-            size = os.path.getsize(IMSI_FILE)
-            if size < last_size:
-                last_size = 0
-            if size == last_size:
-                continue
-            with open(IMSI_FILE, "r") as f:
-                f.seek(last_size)
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("stamp"):
-                        continue
-                    parts = [p.strip() for p in line.split(",")]
-                    if len(parts) >= 9:
-                        send_observation(parts[3], parts[7], parts[8], parts[4], parts[5], parts[6])
-                last_size = f.tell()
-        except Exception as e:
-            log(f"File parse error: {e}")
-
-def listen_gsmtap():
-    """Listen on UDP 4729 for GSMTAP packets from grgsm_livemon"""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(1)
-    try:
-        sock.bind(("127.0.0.1", 4729))
-    except OSError:
-        sock.bind(("127.0.0.1", 4730))
-    
-    while running:
-        try:
-            data, addr = sock.recvfrom(4096)
-            if len(data) >= 12:
-                arfcn = struct.unpack(">H", data[4:6])[0]
-                signal = -(data[6] if data[6] < 128 else data[6] - 256)
-                log(f"GSM frame ARFCN={arfcn} Signal={signal}dBm")
-        except socket.timeout:
-            continue
-        except Exception as e:
-            log(f"GSMTAP error: {e}")
-
-def find_best_frequency():
-    """Try common SA frequencies and pick the strongest"""
-    log("Scanning for GSM frequencies...")
-    try:
-        result = subprocess.run(
-            ["timeout", "30", "grgsm_scanner", "-b", "GSM900"],
-            capture_output=True, text=True, timeout=45,
-            env={**os.environ, "QT_QPA_PLATFORM": "offscreen"}
+    if not cfg.provisioning_token:
+        raise RuntimeError(
+            "no state file at %s and no SCORPION_PROVISIONING_TOKEN set; cannot provision" % state_path
         )
-        for line in result.stdout.split("\n"):
-            if "Freq:" in line and "Pwr:" in line:
-                freq = line.split("Freq:")[1].strip().split(",")[0]
-                pwr_str = line.split("Pwr:")[1].strip()
-                try:
-                    pwr = int(pwr_str)
-                    if pwr > -70:
-                        log(f"Found strong signal: {freq} (power: {pwr})")
-                        CONFIG["gsm_freq"] = freq
-                        return freq
-                except: pass
-    except: pass
-    return CONFIG["gsm_freq"]
 
-def start_grgsm():
-    """Start grgsm_livemon in background"""
-    freq = find_best_frequency()
-    log(f"Starting grgsm_livemon on {freq}...")
-    subprocess.Popen(
-        ["grgsm_livemon", "-f", freq],
-        stdout=open("/dev/null", "w"),
-        stderr=subprocess.DEVNULL,
-        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"}
+    result = transport.register(
+        cfg.provisioning_token, name=cfg.device_name, lat=cfg.lat, lng=cfg.lng, firmware_version=None
     )
+    save_state(state_path, {"device_id": result["device_id"], "device_token": result["device_token"]})
+    return result["device_id"], result["device_token"]
 
-def start_imsi_catcher():
-    """Start simple_IMSI-catcher.py saving to file"""
-    log("Starting IMSI catcher...")
-    subprocess.Popen(
-        ["sudo", "python3", "/opt/dungbeetle-scanner/simple_IMSI-catcher.py",
-         "-s", "--txt", IMSI_FILE],
-        stdout=open("/tmp/imsi-catcher.log", "w"),
-        stderr=subprocess.STDOUT,
-    )
 
-def cleanup(signum=None, frame=None):
-    global running
-    running = False
-    log("Shutting down...")
-    sys.exit(0)
+def reprovision(cfg, transport: Transport, state_path: str) -> tuple:
+    if os.path.isfile(state_path):
+        os.remove(state_path)
+    return provision_if_needed(cfg, transport, state_path)
+
+
+def heartbeat_loop(transport: Transport, identity: dict, interval_s: float, stop_event: threading.Event) -> None:
+    while not stop_event.is_set():
+        try:
+            transport.heartbeat(identity["device_id"], identity["device_token"])
+        except (TransportAuthError, TransportRetryableError):
+            pass
+        stop_event.wait(interval_s)
+
+
+def capture_loop(
+    reader: capture.TailReader,
+    spool: Spool,
+    device_name: str,
+    get_fix,
+    poll_interval_s: float,
+    stop_event: threading.Event,
+) -> None:
+    while not stop_event.is_set():
+        capture.capture_new_observations(reader, spool, device_name, get_fix=get_fix)
+        stop_event.wait(poll_interval_s)
+
+
+def send_loop(spool: Spool, transport: Transport, identity: dict, cfg, state_path: str, stop_event: threading.Event) -> None:
+    """Drain the spool with exponential backoff (1s..60s) on failure.
+
+    ponytail: identity dict is read/written across threads without a lock;
+    the GIL makes single-key read/write atomic enough here, upgrade to a
+    lock if fields ever need to change together mid-read.
+    """
+    backoff = None
+    while not stop_event.is_set():
+        try:
+            result = flush(spool, transport, identity["device_id"], identity["device_token"])
+            backoff = None
+            stop_event.wait(0 if result["sent"] else IDLE_POLL_S)
+        except TransportAuthError:
+            try:
+                device_id, device_token = reprovision(cfg, transport, state_path)
+                identity["device_id"] = device_id
+                identity["device_token"] = device_token
+                backoff = None
+            except RuntimeError:
+                backoff = next_backoff_seconds(backoff)
+                stop_event.wait(backoff)
+        except TransportRetryableError:
+            backoff = next_backoff_seconds(backoff)
+            stop_event.wait(backoff)
+
+
+def main() -> None:
+    config_path = os.environ.get("SCORPION_CONFIG", DEFAULT_CONFIG_PATH)
+    cfg = load_config(config_path=config_path, env=os.environ)
+
+    os.makedirs(cfg.spool_dir, exist_ok=True)
+    spool = Spool(os.path.join(cfg.spool_dir, "spool.db"))
+    transport = Transport(cfg.server_url)
+
+    device_id, device_token = provision_if_needed(cfg, transport, cfg.state_file)
+    identity = {"device_id": device_id, "device_token": device_token}
+
+    def get_fix():
+        if not cfg.gnss_enabled:
+            return None
+        return gnss.get_fix(cfg.gnss_serial, cfg.gnss_baud)
+
+    reader = capture.TailReader(cfg.capture_txt)
+    stop_event = threading.Event()
+
+    def handle_signal(signum, frame):
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    freq = capture.find_best_frequency(cfg.scan_frequencies_mhz)
+    capture.start_grgsm_livemon(freq)
+    time.sleep(2)
+    capture.start_imsi_catcher(cfg.capture_txt)
+
+    threads = [
+        threading.Thread(target=heartbeat_loop, args=(transport, identity, cfg.heartbeat_interval_s, stop_event), daemon=True),
+        threading.Thread(target=capture_loop, args=(reader, spool, cfg.device_name, get_fix, 3.0, stop_event), daemon=True),
+        threading.Thread(target=send_loop, args=(spool, transport, identity, cfg, cfg.state_file, stop_event), daemon=True),
+    ]
+    for t in threads:
+        t.start()
+
+    while not stop_event.is_set():
+        stop_event.wait(1.0)
+
+    for t in threads:
+        t.join(timeout=5.0)
+
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, cleanup)
-    signal.signal(signal.SIGTERM, cleanup)
-    
-    log(f"Dungbeetle Agent starting: {CONFIG['device_name']}")
-    log(f"Server: {CONFIG['server']}")
-    
-    # Register with server
-    for i in range(5):
-        if register_device():
-            break
-        log(f"Retrying registration ({i+1}/5)...")
-        time.sleep(5)
-    
-    # Start background threads
-    threading.Thread(target=send_heartbeat, daemon=True).start()
-    threading.Thread(target=listen_gsmtap, daemon=True).start()
-    threading.Thread(target=parse_imsi_file, daemon=True).start()
-    
-    # Start GSM capture
-    start_grgsm()
-    time.sleep(2)
-    start_imsi_catcher()
-    
-    log("Agent ready. Monitoring for IMSIs...")
-    
-    while running:
-        time.sleep(10)
+    main()
