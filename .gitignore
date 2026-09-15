@@ -27,3 +27,7 @@ node_modules
 /playwright/.cache/
 
 app.config.timestamp_*.js
+
+# Python
+__pycache__/
+*.pyc
