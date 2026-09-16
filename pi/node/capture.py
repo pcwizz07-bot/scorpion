@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 
 IMSI_RE = re.compile(r"^\d{5,20}$")
 IMSI_CATCHER_PATH = "/opt/dungbeetle-scanner/simple_IMSI-catcher.py"
+LIVEMON_LOG_PATH = "/var/log/scorpion-livemon.log"
+CATCHER_LOG_PATH = "/var/log/scorpion-catcher.log"
+RTL_POWER_FALLBACK_LOW_MHZ = 935.0
+RTL_POWER_FALLBACK_HIGH_MHZ = 960.0
 
 
 class TailReader:
@@ -77,10 +81,56 @@ def capture_new_observations(tail_reader: TailReader, spool, device_name: str, g
     return count
 
 
-def find_best_frequency(default_frequencies_mhz: list, timeout_s: int = 30) -> float:
-    """Run grgsm_scanner over SA bands and return the strongest frequency, else the first default."""
+def scan_rtl_power(
+    run=subprocess.run,
+    low_mhz: float = RTL_POWER_FALLBACK_LOW_MHZ,
+    high_mhz: float = RTL_POWER_FALLBACK_HIGH_MHZ,
+    step_hz: int = 100_000,
+    timeout_s: int = 20,
+) -> float | None:
+    """Sweep low_mhz-high_mhz with rtl_power and return the strongest bin in MHz, else None.
+
+    Used as a last-resort fallback when grgsm_scanner decodes no cells (energy-only
+    environments where GSM framing can't be decoded but a carrier is still present).
+    """
     try:
-        result = subprocess.run(
+        result = run(
+            ["rtl_power", "-f", f"{low_mhz}M:{high_mhz}M:{step_hz}", "-i", str(timeout_s), "-1", "-"],
+            capture_output=True,
+            text=True,
+            timeout=timeout_s + 15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    best_freq = None
+    best_pwr = -1000.0
+    for line in result.stdout.splitlines():
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 7:
+            continue
+        try:
+            hz_low = float(parts[2])
+            hz_step = float(parts[4])
+            samples = [float(p) for p in parts[6:] if p]
+        except ValueError:
+            continue
+        for i, pwr in enumerate(samples):
+            if pwr > best_pwr:
+                best_pwr = pwr
+                best_freq = (hz_low + i * hz_step) / 1e6
+
+    return best_freq
+
+
+def find_best_frequency(default_frequencies_mhz: list, timeout_s: int = 30, run=subprocess.run) -> float:
+    """Run grgsm_scanner over SA bands and return the strongest frequency.
+
+    Falls back to an rtl_power energy sweep when the scanner decodes no cells
+    (energy-only reception), and finally to the first configured default.
+    """
+    try:
+        result = run(
             ["timeout", str(timeout_s), "grgsm_scanner", "-b", "GSM900"],
             capture_output=True,
             text=True,
@@ -104,21 +154,28 @@ def find_best_frequency(default_frequencies_mhz: list, timeout_s: int = 30) -> f
             best_pwr = pwr
             best_freq = freq
 
-    return best_freq if best_freq is not None else default_frequencies_mhz[0]
+    if best_freq is not None:
+        return best_freq
+
+    fallback_freq = scan_rtl_power(run=run)
+    return fallback_freq if fallback_freq is not None else default_frequencies_mhz[0]
 
 
-def start_grgsm_livemon(freq_mhz: float) -> subprocess.Popen:
+def start_grgsm_livemon(freq_mhz: float, log_path: str = LIVEMON_LOG_PATH) -> subprocess.Popen:
+    log_file = open(log_path, "ab")
     return subprocess.Popen(
         ["grgsm_livemon", "-f", f"{freq_mhz}M"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
         env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
     )
 
 
-def start_imsi_catcher(capture_txt: str) -> subprocess.Popen:
+def start_imsi_catcher(capture_txt: str, log_path: str = CATCHER_LOG_PATH) -> subprocess.Popen:
+    log_file = open(log_path, "ab")
     return subprocess.Popen(
         ["sudo", "python3", IMSI_CATCHER_PATH, "-s", "--txt", capture_txt],
-        stdout=subprocess.DEVNULL,
+        stdout=log_file,
         stderr=subprocess.STDOUT,
+        cwd=os.path.dirname(IMSI_CATCHER_PATH),
     )
