@@ -30,9 +30,11 @@ def list_alerts(
                 id=row.id,
                 device_id=str(row.device_id) if row.device_id else None,
                 imsi_masked=imsi_masked,
-                title=row.title,
+                type=row.type,
                 severity=row.severity,
+                title=row.title,
                 message=row.message,
+                resolved=row.resolved,
                 created_at=row.created_at,
             )
         )

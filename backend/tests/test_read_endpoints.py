@@ -30,7 +30,7 @@ def test_observations_masks_imsi_and_orders_newest_first(client, registered_devi
     )
     client.post(
         "/api/v1/observations",
-        json={"observations": [{"imsi": FAKE_IMSI_2, "country": "TZ"}]},
+        json={"observations": [{"imsi": FAKE_IMSI_2, "country": "TZ", "signal_dbm": -77}]},
         headers=_device_headers(registered_device),
     )
 
@@ -45,8 +45,36 @@ def test_observations_masks_imsi_and_orders_newest_first(client, registered_devi
     assert "imsi_encrypted" not in body[0]
     assert body[0]["country"] == "TZ"
     assert body[0]["device_id"] == registered_device["device_id"]
-    for field in ("id", "device_id", "imsi_masked", "mcc", "mnc", "lac", "cell_id", "country", "brand", "operator", "ts"):
+    assert body[0]["device_name"] == "test-device"
+    assert body[0]["signal_dbm"] == -77
+    for field in (
+        "id",
+        "device_id",
+        "device_name",
+        "imsi_masked",
+        "mcc",
+        "mnc",
+        "lac",
+        "cell_id",
+        "country",
+        "brand",
+        "operator",
+        "signal_dbm",
+        "observed_at",
+    ):
         assert field in body[0]
+
+
+def test_observations_response_never_leaks_full_imsi(client, registered_device):
+    client.post(
+        "/api/v1/observations",
+        json={"observations": [{"imsi": FAKE_IMSI_1}, {"imsi": FAKE_IMSI_2}]},
+        headers=_device_headers(registered_device),
+    )
+    resp = client.get("/api/v1/observations", headers=_device_headers(registered_device))
+    assert resp.status_code == 200
+    assert FAKE_IMSI_1 not in resp.text
+    assert FAKE_IMSI_2 not in resp.text
 
 
 def test_observations_respects_limit(client, registered_device):
@@ -117,8 +145,21 @@ def test_alerts_masks_imsi_when_present_and_orders_newest_first(client, register
     # newest first: the new_device-imsi alert comes before the device-registration alert
     assert body[0]["imsi_masked"] == "123456***45"
     assert body[1]["imsi_masked"] is None
-    for field in ("id", "device_id", "imsi_masked", "title", "message", "created_at"):
+    assert body[0]["type"] == "new_device"
+    assert body[0]["resolved"] is False
+    for field in ("id", "device_id", "imsi_masked", "type", "severity", "title", "message", "resolved", "created_at"):
         assert field in body[0]
+
+
+def test_alerts_response_never_leaks_full_imsi(client, registered_device):
+    client.post(
+        "/api/v1/observations",
+        json={"observations": [{"imsi": FAKE_IMSI_1}]},
+        headers=_device_headers(registered_device),
+    )
+    resp = client.get("/api/v1/alerts", headers=_device_headers(registered_device))
+    assert resp.status_code == 200
+    assert FAKE_IMSI_1 not in resp.text
 
 
 def test_alerts_respects_limit(client, registered_device):
@@ -142,7 +183,7 @@ def test_audit_requires_provisioning_token(client):
 
 def test_audit_rejects_device_token(client, registered_device):
     resp = client.get("/api/v1/audit", headers=_device_headers(registered_device))
-    assert resp.status_code == 401
+    assert resp.status_code == 403
 
 
 def test_audit_returns_rows_newest_first(client, provisioning_token, db_session):

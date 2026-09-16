@@ -12,9 +12,16 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def require_provisioning_token(x_provisioning_token: str | None = Header(default=None)) -> None:
-    if not x_provisioning_token or x_provisioning_token != settings.PROVISIONING_TOKEN:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized")
+def require_provisioning_token(
+    x_provisioning_token: str | None = Header(default=None),
+    x_device_token: str | None = Header(default=None),
+) -> None:
+    if x_provisioning_token and x_provisioning_token == settings.PROVISIONING_TOKEN:
+        return
+    if x_device_token:
+        # A recognizable credential was supplied, just not one with enough privilege.
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized")
 
 
 def require_device_token(

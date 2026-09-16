@@ -55,6 +55,7 @@ class ObservationsBatchResponse(BaseModel):
 class ObservationOut(BaseModel):
     id: int
     device_id: str
+    device_name: str | None
     imsi_masked: str
     mcc: str | None
     mnc: str | None
@@ -63,16 +64,19 @@ class ObservationOut(BaseModel):
     country: str | None
     brand: str | None
     operator: str | None
-    ts: datetime
+    signal_dbm: int | None
+    observed_at: datetime
 
 
 class AlertOut(BaseModel):
     id: int
     device_id: str | None
     imsi_masked: str | None
-    title: str
+    type: str
     severity: str
+    title: str
     message: str | None
+    resolved: bool
     created_at: datetime
 
 
