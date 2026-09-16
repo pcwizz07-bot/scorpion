@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import alerts, audit, devices, observations, stats
@@ -29,15 +28,12 @@ def create_app() -> FastAPI:
     app.include_router(audit.router, prefix="/api/v1")
     app.include_router(stats.router, prefix="/api/v1")
 
+    # Serve the built SPA at /portal, same origin as the API (no CORS needed).
+    # The webui has no client-side URL routing (tab state only), so a plain
+    # static mount with html=True (index.html for directory requests) is
+    # enough — no SPA-fallback catch-all route is required.
     if WEBUI_DIST.is_dir():
-        app.mount("/assets", StaticFiles(directory=WEBUI_DIST / "assets"), name="webui-assets")
-
-        @app.get("/{full_path:path}")
-        def serve_webui(full_path: str) -> FileResponse:
-            candidate = WEBUI_DIST / full_path
-            if candidate.is_file():
-                return FileResponse(candidate)
-            return FileResponse(WEBUI_DIST / "index.html")
+        app.mount("/portal", StaticFiles(directory=WEBUI_DIST, html=True), name="portal")
 
     return app
 
