@@ -76,6 +76,17 @@ class AlertOut(BaseModel):
     created_at: datetime
 
 
+class StatsOut(BaseModel):
+    devices_total: int
+    devices_online: int
+    observations_total: int
+    observations_last_24h: int
+    unique_imsis: int
+    tracked_active: int
+    alerts_total: int
+    alerts_open: int
+
+
 class AuditLogOut(BaseModel):
     id: int
     action: str

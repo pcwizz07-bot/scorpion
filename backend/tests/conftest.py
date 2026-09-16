@@ -1,5 +1,6 @@
 import os
 import secrets
+from urllib.parse import urlsplit, urlunsplit
 
 import psycopg
 from cryptography.fernet import Fernet
@@ -14,13 +15,17 @@ os.environ.setdefault("DEDUP_WINDOW_SECONDS", "60")
 
 
 def _ensure_test_database() -> None:
-    conn = psycopg.connect(
-        "postgresql://scorpion:REDACTED_DEV_PASSWORD@127.0.0.1:5432/postgres",
-        autocommit=True,
-    )
+    # Derive the admin ("postgres") DSN from the resolved DATABASE_URL (env-overridable)
+    # rather than a second hardcoded literal, so a non-default local Postgres (different
+    # host/port/credentials) doesn't need two places updated.
+    parts = urlsplit(os.environ["DATABASE_URL"].replace("+psycopg", ""))
+    dbname = parts.path.lstrip("/")
+    admin_dsn = urlunsplit(parts._replace(path="/postgres"))
+
+    conn = psycopg.connect(admin_dsn, autocommit=True)
     try:
         with conn.cursor() as cur:
-            cur.execute("CREATE DATABASE scorpion_test")
+            cur.execute(f'CREATE DATABASE "{dbname}"')
     except psycopg.errors.DuplicateDatabase:
         pass
     finally:

@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import alerts, audit, devices, observations
+from app.api import alerts, audit, devices, observations, stats
 
 WEBUI_DIST = Path(__file__).resolve().parent.parent.parent / "webui" / "dist"
 
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(observations.router, prefix="/api/v1")
     app.include_router(alerts.router, prefix="/api/v1")
     app.include_router(audit.router, prefix="/api/v1")
+    app.include_router(stats.router, prefix="/api/v1")
 
     if WEBUI_DIST.is_dir():
         app.mount("/assets", StaticFiles(directory=WEBUI_DIST / "assets"), name="webui-assets")
