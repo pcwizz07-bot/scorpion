@@ -44,6 +44,7 @@ export type Device = {
 export type Observation = {
   id: number;
   device_id: string;
+  device_name: string | null;
   imsi_masked: string;
   mcc: string | null;
   mnc: string | null;
@@ -52,21 +53,36 @@ export type Observation = {
   country: string | null;
   brand: string | null;
   operator: string | null;
-  ts: string;
+  signal_dbm: number | null;
+  observed_at: string;
 };
 
 export type Alert = {
   id: number;
   device_id: string | null;
   imsi_masked: string | null;
-  title: string;
+  type: string;
   severity: string;
+  title: string;
   message: string | null;
+  resolved: boolean;
   created_at: string;
+};
+
+export type Stats = {
+  devices_total: number;
+  devices_online: number;
+  observations_total: number;
+  observations_last_24h: number;
+  unique_imsis: number;
+  tracked_active: number;
+  alerts_total: number;
+  alerts_open: number;
 };
 
 export const api = {
   health: () => request<Health>("/health"),
+  stats: () => request<Stats>("/stats"),
   devices: () => request<Device[]>("/devices"),
   registerDevice: (body: { name: string; lat: number; lng: number }) =>
     request<{ device_id: string; device_token: string }>("/devices/register", {

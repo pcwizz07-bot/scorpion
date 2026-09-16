@@ -40,13 +40,14 @@ export function Observations() {
             <th className="p-2">Country</th>
             <th className="p-2">Brand</th>
             <th className="p-2">Operator</th>
+            <th className="p-2">Signal</th>
           </tr>
         </thead>
         <tbody>
           {observations.map((o) => (
             <tr key={o.id} className="border-b border-neutral-900">
-              <td className="p-2">{o.ts}</td>
-              <td className="p-2">{o.device_id}</td>
+              <td className="p-2">{o.observed_at}</td>
+              <td className="p-2">{o.device_name ?? o.device_id}</td>
               <td className="p-2 font-mono">{o.imsi_masked}</td>
               <td className="p-2">
                 {o.mcc ?? "?"}/{o.mnc ?? "?"}
@@ -54,6 +55,7 @@ export function Observations() {
               <td className="p-2">{o.country ?? "?"}</td>
               <td className="p-2">{o.brand ?? "?"}</td>
               <td className="p-2">{o.operator ?? "?"}</td>
+              <td className="p-2">{o.signal_dbm ?? "?"}</td>
             </tr>
           ))}
         </tbody>

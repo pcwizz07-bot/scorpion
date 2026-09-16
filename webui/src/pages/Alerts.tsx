@@ -22,20 +22,24 @@ export function Alerts() {
         <thead>
           <tr className="border-b border-neutral-800">
             <th className="p-2">Time</th>
+            <th className="p-2">Type</th>
             <th className="p-2">Severity</th>
             <th className="p-2">Title</th>
             <th className="p-2">Message</th>
             <th className="p-2">IMSI</th>
+            <th className="p-2">Resolved</th>
           </tr>
         </thead>
         <tbody>
           {alerts.map((a) => (
             <tr key={a.id} className="border-b border-neutral-900">
               <td className="p-2">{a.created_at}</td>
+              <td className="p-2">{a.type}</td>
               <td className="p-2">{a.severity}</td>
               <td className="p-2">{a.title}</td>
               <td className="p-2">{a.message ?? ""}</td>
               <td className="p-2 font-mono">{a.imsi_masked ?? ""}</td>
+              <td className="p-2">{a.resolved ? "yes" : "no"}</td>
             </tr>
           ))}
         </tbody>
