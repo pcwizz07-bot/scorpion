@@ -17,3 +17,7 @@ def imsi_decrypt(token: bytes, key: str | None = None) -> str:
 
 def imsi_hash(imsi: str, pepper: str | None = None) -> str:
     return hashlib.sha256((imsi + (pepper or settings.CRYPTO_KEY)).encode()).hexdigest()
+
+
+def mask_imsi(imsi: str) -> str:
+    return f"{imsi[:6]}***{imsi[-2:]}"

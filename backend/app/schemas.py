@@ -50,3 +50,34 @@ class ObservationsBatchRequest(BaseModel):
 class ObservationsBatchResponse(BaseModel):
     created: int
     duplicates: int
+
+
+class ObservationOut(BaseModel):
+    id: int
+    device_id: str
+    imsi_masked: str
+    mcc: str | None
+    mnc: str | None
+    lac: int | None
+    cell_id: int | None
+    country: str | None
+    brand: str | None
+    operator: str | None
+    ts: datetime
+
+
+class AlertOut(BaseModel):
+    id: int
+    device_id: str | None
+    imsi_masked: str | None
+    title: str
+    severity: str
+    message: str | None
+    created_at: datetime
+
+
+class AuditLogOut(BaseModel):
+    id: int
+    action: str
+    detail: dict | None
+    created_at: datetime

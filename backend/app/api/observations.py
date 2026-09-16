@@ -1,15 +1,16 @@
 import re
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.crypto import imsi_encrypt, imsi_hash
+from app.crypto import imsi_decrypt, imsi_encrypt, imsi_hash, mask_imsi
 from app.db import get_db
 from app.models import Alert, Device, ImsiObservation, TrackedImsi
-from app.schemas import ObservationsBatchRequest, ObservationsBatchResponse
-from app.security import require_device_token
+from app.schemas import ObservationOut, ObservationsBatchRequest, ObservationsBatchResponse
+from app.security import require_device_or_provisioning_token, require_device_token
 
 router = APIRouter(prefix="/observations", tags=["observations"])
 
@@ -101,3 +102,32 @@ def create_observations(
 
     db.commit()
     return ObservationsBatchResponse(created=created, duplicates=duplicates)
+
+
+@router.get("", response_model=list[ObservationOut])
+def list_observations(
+    limit: int = 50,
+    device_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_device_or_provisioning_token),
+) -> list[ObservationOut]:
+    query = db.query(ImsiObservation)
+    if device_id is not None:
+        query = query.filter(ImsiObservation.device_id == device_id)
+    rows = query.order_by(ImsiObservation.observed_at.desc()).limit(limit).all()
+    return [
+        ObservationOut(
+            id=row.id,
+            device_id=str(row.device_id),
+            imsi_masked=mask_imsi(imsi_decrypt(row.imsi_encrypted)),
+            mcc=row.mcc,
+            mnc=row.mnc,
+            lac=row.lac,
+            cell_id=row.cell_id,
+            country=row.country,
+            brand=row.brand,
+            operator=row.operator,
+            ts=row.observed_at,
+        )
+        for row in rows
+    ]
