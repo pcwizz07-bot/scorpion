@@ -12,7 +12,7 @@ _PARENT_DIR = os.path.dirname(_THIS_DIR)
 if _PARENT_DIR not in sys.path:
     sys.path.insert(0, _PARENT_DIR)
 
-from pi.node import capture, gnss
+from pi.node import capture, gnss, presence
 from pi.node.config import DEFAULT_CONFIG_PATH, load_config
 from pi.node.spool import Spool
 from pi.node.transport import Transport, TransportAuthError, TransportRetryableError, flush, next_backoff_seconds
@@ -84,7 +84,27 @@ def capture_loop(
         stop_event.wait(poll_interval_s)
 
 
-def send_loop(spool: Spool, transport: Transport, identity: dict, cfg, state_path: str, stop_event: threading.Event) -> None:
+def presence_capture_loop(
+    reader: capture.TailReader,
+    spool: Spool,
+    device_name: str,
+    poll_interval_s: float,
+    stop_event: threading.Event,
+) -> None:
+    while not stop_event.is_set():
+        presence.capture_new_presence_events(reader, spool, device_name)
+        stop_event.wait(poll_interval_s)
+
+
+def send_loop(
+    spool: Spool,
+    transport: Transport,
+    identity: dict,
+    cfg,
+    state_path: str,
+    stop_event: threading.Event,
+    send_fn=None,
+) -> None:
     """Drain the spool with exponential backoff (1s..60s) on failure.
 
     ponytail: identity dict is read/written across threads without a lock;
@@ -94,7 +114,7 @@ def send_loop(spool: Spool, transport: Transport, identity: dict, cfg, state_pat
     backoff = None
     while not stop_event.is_set():
         try:
-            result = flush(spool, transport, identity["device_id"], identity["device_token"])
+            result = flush(spool, transport, identity["device_id"], identity["device_token"], send_fn=send_fn)
             backoff = None
             stop_event.wait(0 if result["sent"] else IDLE_POLL_S)
         except TransportAuthError:
@@ -146,6 +166,30 @@ def main() -> None:
         threading.Thread(target=capture_loop, args=(reader, spool, cfg.device_name, get_fix, 3.0, stop_event), daemon=True),
         threading.Thread(target=send_loop, args=(spool, transport, identity, cfg, cfg.state_file, stop_event), daemon=True),
     ]
+
+    if cfg.presence_enabled:
+        presence_spool = Spool(os.path.join(cfg.spool_dir, "presence_spool.db"))
+        presence_reader = capture.TailReader(cfg.presence_txt)
+        threads += [
+            threading.Thread(
+                target=presence.run_presence_listener,
+                args=(cfg.presence_txt,),
+                kwargs={"iface": cfg.presence_iface, "stop_event": stop_event},
+                daemon=True,
+            ),
+            threading.Thread(
+                target=presence_capture_loop,
+                args=(presence_reader, presence_spool, cfg.device_name, 3.0, stop_event),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=send_loop,
+                args=(presence_spool, transport, identity, cfg, cfg.state_file, stop_event),
+                kwargs={"send_fn": transport.send_presence_events},
+                daemon=True,
+            ),
+        ]
+
     for t in threads:
         t.start()
 

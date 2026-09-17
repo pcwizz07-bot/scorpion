@@ -21,6 +21,9 @@ def test_defaults_when_no_file_and_no_env(tmp_path):
     assert cfg.gnss_enabled is False
     assert cfg.gnss_serial == "/dev/ttyUSB2"
     assert cfg.gnss_baud == 115200
+    assert cfg.presence_enabled is True
+    assert cfg.presence_txt == "/tmp/presence-output.txt"
+    assert cfg.presence_iface == "lo"
     assert cfg.provisioning_token is None
 
 

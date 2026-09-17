@@ -137,7 +137,10 @@ SVC
   "capture_txt": "/tmp/imsi-output.txt",
   "gnss_enabled": false,
   "gnss_serial": "/dev/ttyUSB2",
-  "gnss_baud": 115200
+  "gnss_baud": 115200,
+  "presence_enabled": true,
+  "presence_txt": "/tmp/presence-output.txt",
+  "presence_iface": "lo"
 }
 CONF
     sudo chmod 600 /etc/scorpion/agent.conf

@@ -70,21 +70,35 @@ class Transport:
             duplicates += payload.get("duplicates", 0)
         return {"created": created, "duplicates": duplicates}
 
+    def send_presence_events(self, device_id: str, device_token: str, events: list) -> dict:
+        created = 0
+        duplicates = 0
+        for chunk in _chunks(events, MAX_BATCH_SIZE):
+            payload = self._post(
+                "/api/v1/presence",
+                {"events": chunk},
+                {"X-Device-Token": device_token},
+            )
+            created += payload.get("created", 0)
+            duplicates += payload.get("duplicates", 0)
+        return {"created": created, "duplicates": duplicates}
 
-def flush(spool, transport: Transport, device_id: str, device_token: str, batch_size: int = MAX_BATCH_SIZE) -> dict:
-    """Send pending spool observations; mark sent+delete on success only.
+
+def flush(spool, transport: Transport, device_id: str, device_token: str, batch_size: int = MAX_BATCH_SIZE, send_fn=None) -> dict:
+    """Send pending spool rows via `send_fn` (default: transport.send_observations).
 
     On failure the spool is left untouched (still queued) so nothing is
     lost, and each pending row's attempt counter is bumped for backoff.
     """
+    send_fn = send_fn or transport.send_observations
     pending = spool.pending(limit=batch_size)
     if not pending:
         return {"sent": 0, "created": 0, "duplicates": 0}
 
     ids = [row["id"] for row in pending]
-    observations = [row["observation"] for row in pending]
+    items = [row["observation"] for row in pending]
     try:
-        result = transport.send_observations(device_id, device_token, observations)
+        result = send_fn(device_id, device_token, items)
     except (TransportAuthError, TransportRetryableError):
         spool.record_attempt(ids)
         raise
