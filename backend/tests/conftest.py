@@ -7,7 +7,7 @@ from cryptography.fernet import Fernet
 
 os.environ.setdefault(
     "DATABASE_URL",
-    "postgresql+psycopg://scorpion:REDACTED_DEV_PASSWORD@127.0.0.1:5432/scorpion_test",
+    "postgresql+psycopg://scorpion:@127.0.0.1:5432/scorpion_test",
 )
 os.environ["PROVISIONING_TOKEN"] = "test-provisioning-token-" + secrets.token_hex(8)
 os.environ["CRYPTO_KEY"] = Fernet.generate_key().decode()
