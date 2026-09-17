@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.api import alerts, audit, devices, observations, stats
+from app.api import alerts, audit, devices, observations, presence, stats
 
 WEBUI_DIST = Path(__file__).resolve().parent.parent.parent / "webui" / "dist"
 
@@ -24,6 +24,7 @@ def create_app() -> FastAPI:
 
     app.include_router(devices.router, prefix="/api/v1")
     app.include_router(observations.router, prefix="/api/v1")
+    app.include_router(presence.router, prefix="/api/v1")
     app.include_router(alerts.router, prefix="/api/v1")
     app.include_router(audit.router, prefix="/api/v1")
     app.include_router(stats.router, prefix="/api/v1")

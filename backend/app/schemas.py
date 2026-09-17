@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -64,6 +65,39 @@ class ObservationOut(BaseModel):
     country: str | None
     brand: str | None
     operator: str | None
+    signal_dbm: int | None
+    observed_at: datetime
+
+
+class PresenceEventIn(BaseModel):
+    kind: Literal["plu", "attach", "page", "reauth"]
+    tmsi_old: str | None = None
+    tmsi_new: str | None = None
+    lac: int | None = None
+    cell_id: int | None = None
+    chan: str | None = None
+    signal_dbm: int | None = None
+    observed_at: datetime | None = None
+
+
+class PresenceEventsBatchRequest(BaseModel):
+    events: list[PresenceEventIn] = Field(max_length=200)
+
+
+class PresenceEventsBatchResponse(BaseModel):
+    created: int
+    duplicates: int
+
+
+class PresenceEventOut(BaseModel):
+    id: int
+    device_id: str
+    kind: str
+    tmsi_old: str | None
+    tmsi_new: str | None
+    lac: int | None
+    cell_id: int | None
+    chan: str | None
     signal_dbm: int | None
     observed_at: datetime
 

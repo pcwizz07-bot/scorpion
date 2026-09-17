@@ -22,6 +22,9 @@ class Config:
     gnss_enabled: bool = False
     gnss_serial: str = "/dev/ttyUSB2"
     gnss_baud: int = 115200
+    presence_enabled: bool = True
+    presence_txt: str = "/tmp/presence-output.txt"
+    presence_iface: str = "lo"
     provisioning_token: str | None = None
 
 

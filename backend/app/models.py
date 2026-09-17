@@ -80,6 +80,28 @@ class TrackedImsi(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
 
+class PresenceEvent(Base):
+    __tablename__ = "presence_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    device_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("devices.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    tmsi_old: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tmsi_new: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lac: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cell_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signal_dbm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_presence_events_device_id_observed_at", "device_id", "observed_at"),
+        Index("ix_presence_events_tmsi_old", "tmsi_old"),
+        Index("ix_presence_events_tmsi_new", "tmsi_new"),
+    )
+
+
 class Alert(Base):
     __tablename__ = "alerts"
 
