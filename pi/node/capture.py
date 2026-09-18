@@ -1,7 +1,9 @@
 """grgsm_livemon + simple_IMSI-catcher txt tail reader -> spool; SA freq scan."""
 import os
 import re
+import signal
 import subprocess
+import time
 from datetime import datetime, timezone
 
 IMSI_RE = re.compile(r"^\d{5,20}$")
@@ -10,6 +12,149 @@ LIVEMON_LOG_PATH = "/var/log/scorpion-livemon.log"
 CATCHER_LOG_PATH = "/var/log/scorpion-catcher.log"
 RTL_POWER_FALLBACK_LOW_MHZ = 935.0
 RTL_POWER_FALLBACK_HIGH_MHZ = 960.0
+SUPERVISOR_LOG_PATH = "/var/log/scorpion-supervisor.log"
+SUPERVISOR_CHECK_INTERVAL_S = 15.0
+SUPERVISOR_DONGLE_TIMEOUT_S = 300.0
+SUPERVISOR_DONGLE_POLL_S = 5.0
+STALE_PROC_MARKERS = ("grgsm_livemon", "simple_IMSI-catcher.py")
+
+
+def supervisor_log(message: str) -> None:
+    """Append an audit line to the supervisor log (root-owned; never DEVNULL)."""
+    try:
+        with open(SUPERVISOR_LOG_PATH, "a") as f:
+            f.write(f"{datetime.now(timezone.utc).isoformat()} {message}\n")
+    except OSError:
+        pass
+
+
+def dongle_available(run=subprocess.run, timeout_s: int = 25) -> bool:
+    """True when rtl_test can claim a device (i.e. one is present AND not busy)."""
+    try:
+        result = run(["rtl_test", "-t"], capture_output=True, text=True, timeout=timeout_s)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def wait_for_dongle(
+    timeout_s: float = SUPERVISOR_DONGLE_TIMEOUT_S,
+    poll_s: float = SUPERVISOR_DONGLE_POLL_S,
+    available=None,
+    sleep_fn=time.sleep,
+) -> bool:
+    """Poll until a dongle is claimable or the budget runs out."""
+    available_fn = available if available is not None else dongle_available
+    waited = 0.0
+    while waited < timeout_s:
+        if available_fn():
+            return True
+        sleep_fn(poll_s)
+        waited += poll_s
+    return available_fn()
+
+
+def _iter_capture_pids(proc_root: str = "/proc") -> list:
+    """Return PIDs whose cmdline matches a capture-chain marker (grgsm_livemon / simple_IMSI-catcher)."""
+    found = []
+    try:
+        entries = os.listdir(proc_root)
+    except OSError:
+        return found
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        cmdline_path = os.path.join(proc_root, entry, "cmdline")
+        try:
+            with open(cmdline_path, "rb") as f:
+                raw = f.read()
+        except OSError:
+            continue
+        text = raw.replace(b"\0", b" ").decode("utf-8", "replace")
+        if any(marker in text for marker in STALE_PROC_MARKERS):
+            found.append(int(entry))
+    return found
+
+
+def kill_stale_capture_processes(
+    proc_root: str = "/proc",
+    kill_fn=os.kill,
+    sleep_fn=time.sleep,
+    poll_after_term_s: float = 0.5,
+    own_pid: int | None = None,
+) -> list:
+    """Terminate orphan capture processes (SIGTERM then SIGKILL), skipping own PID.
+
+    This is the anti-jam cleanup: a leftover grgsm_livemon/IMSI-catcher from a
+    manual run (or a previous incarnation) holds the SDR and makes every new
+    start fail with 'Failed to open rtlsdr device'. Returns killed PIDs.
+    """
+    own = os.getpid() if own_pid is None else own_pid
+    pids = [pid for pid in _iter_capture_pids(proc_root) if pid != own]
+    for pid in pids:
+        try:
+            kill_fn(pid, signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            pass
+    sleep_fn(poll_after_term_s)
+    killed = []
+    for pid in pids:
+        try:
+            kill_fn(pid, signal.SIGKILL)
+            killed.append(pid)
+        except (OSError, ProcessLookupError):
+            pass
+    if pids:
+        supervisor_log(f"killed stale capture processes: {pids}")
+    return killed
+
+
+def start_capture_chain(cfg, wait_dongle_fn=None, kill_stale_fn=None) -> tuple:
+    """Idempotent full chain start: cleanup -> dongle wait -> freq scan -> livemon+catcher.
+
+    Raises RuntimeError if no dongle appears within the timeout. Returns (livemon, catcher).
+    """
+    stale_fn = kill_stale_fn if kill_stale_fn is not None else kill_stale_capture_processes
+    stale_fn()
+    wait_fn = wait_dongle_fn if wait_dongle_fn is not None else wait_for_dongle
+    if not wait_fn():
+        raise RuntimeError(
+            "no RTL-SDR dongle claimable after wait; capture chain not started"
+        )
+    freq = find_best_frequency(cfg.scan_frequencies_mhz)
+    supervisor_log(f"starting chain on {freq:.3f} MHz")
+    livemon = start_grgsm_livemon(freq)
+    time.sleep(2)
+    catcher = start_imsi_catcher(cfg.capture_txt)
+    return livemon, catcher
+
+
+def chain_healthy(livemon, catcher) -> bool:
+    """Both processes alive (poll() returns None) => chain is up."""
+    if livemon is None or catcher is None:
+        return False
+    return livemon.poll() is None and catcher.poll() is None
+
+
+def supervisor_tick(
+    cfg,
+    livemon,
+    catcher,
+    start_chain_fn=None,
+    health_fn=None,
+) -> tuple:
+    """One supervisor pass: restart the chain if either process died.
+
+    Returns (restarted: bool, livemon, catcher). On restart the returned handles
+    are the fresh processes; on a healthy pass they are the unchanged handles.
+    """
+    health = health_fn if health_fn is not None else chain_healthy
+    if health(livemon, catcher):
+        return False, livemon, catcher
+    supervisor_log("chain unhealthy; restarting")
+    start_fn = start_chain_fn if start_chain_fn is not None else start_capture_chain
+    new_livemon, new_catcher = start_fn(cfg)
+    return True, new_livemon, new_catcher
 
 
 class TailReader:

@@ -131,6 +131,35 @@ def send_loop(
             stop_event.wait(backoff)
 
 
+def capture_supervisor_loop(
+    cfg,
+    stop_event: threading.Event,
+    check_interval_s: float = capture.SUPERVISOR_CHECK_INTERVAL_S,
+    start_chain_fn=None,
+    health_fn=None,
+) -> None:
+    """Keep the livemon+catcher chain alive; re-latch to a swapped dongle.
+
+    On any tick where the chain is unhealthy (or never started), run the full
+    idempotent restart: kill stale processes, wait for a claimable dongle,
+    rescan the frequency, relaunch livemon + catcher. Logs every action.
+    """
+    livemon, catcher = None, None
+    restarts = 0
+    while not stop_event.is_set():
+        try:
+            restarted, livemon, catcher = capture.supervisor_tick(
+                cfg, livemon, catcher, start_chain_fn=start_chain_fn, health_fn=health_fn
+            )
+            if restarted:
+                restarts += 1
+                capture.supervisor_log(f"chain restarted (total {restarts})")
+        except Exception as exc:  # keep the supervisor alive through start failures
+            capture.supervisor_log(f"supervisor error: {exc!r}")
+        stop_event.wait(check_interval_s)
+    capture.supervisor_log("supervisor stopped")
+
+
 def main() -> None:
     config_path = os.environ.get("SCORPION_CONFIG", DEFAULT_CONFIG_PATH)
     cfg = load_config(config_path=config_path, env=os.environ)
@@ -156,15 +185,11 @@ def main() -> None:
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
-    freq = capture.find_best_frequency(cfg.scan_frequencies_mhz)
-    capture.start_grgsm_livemon(freq)
-    time.sleep(2)
-    capture.start_imsi_catcher(cfg.capture_txt)
-
     threads = [
         threading.Thread(target=heartbeat_loop, args=(transport, identity, cfg.heartbeat_interval_s, stop_event), daemon=True),
         threading.Thread(target=capture_loop, args=(reader, spool, cfg.device_name, get_fix, 3.0, stop_event), daemon=True),
         threading.Thread(target=send_loop, args=(spool, transport, identity, cfg, cfg.state_file, stop_event), daemon=True),
+        threading.Thread(target=capture_supervisor_loop, args=(cfg, stop_event), daemon=True),
     ]
 
     if cfg.presence_enabled:
