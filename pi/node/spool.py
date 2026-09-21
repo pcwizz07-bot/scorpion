@@ -21,6 +21,10 @@ class Spool:
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
         conn.execute("PRAGMA journal_mode=WAL")
+        # Explicit 5s busy timeout: append (capture loop) and mark_sent/delete
+        # (send loop) race on the same DB; without it one side raises
+        # "database is locked" and the sender thread dies permanently.
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
     def append(self, observation: dict) -> int:

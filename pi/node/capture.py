@@ -169,9 +169,15 @@ class TailReader:
         if not os.path.exists(self.path):
             return []
         st = os.stat(self.path)
-        if self._inode is not None and st.st_ino != self._inode:
+        if self._inode is None:
+            # First time we see this file: start at the END. Never replay
+            # pre-existing history after an agent restart (that would re-post
+            # days of old captures and spam the backend with duplicate rows).
+            self._inode = st.st_ino
+            self._offset = st.st_size
+        elif st.st_ino != self._inode:
+            self._inode = st.st_ino
             self._offset = 0
-        self._inode = st.st_ino
         if st.st_size < self._offset:
             self._offset = 0
 
@@ -210,10 +216,46 @@ def parse_line(line: str) -> dict | None:
     }
 
 
+def parse_console_line(line: str) -> dict | None:
+    """Parse a simple_IMSI-catcher console row (its stdout, ';'-separated).
+
+    The txt export (`parse_line`) proved unreliable on deployed nodes, while
+    the console stream (which the catcher logs to scorpion-catcher.log) always
+    carries the rows — including the TMSI chain. Console row layout:
+        {cpt} ; {tmsi1} ; {tmsi2} ; {imsi} ; {country} ; {brand} ; {operator}
+        ; {mcc} ; {mnc} ; {lac} ; {cell} ; {iso-timestamp}
+    The scanner's own header row and startup lines fail the IMSI check.
+    """
+    line = line.strip()
+    if not line or ";" not in line:
+        return None
+    parts = [p.strip() for p in line.split(";")]
+    if len(parts) < 12:
+        return None
+    imsi = parts[3].replace(" ", "")
+    if not IMSI_RE.match(imsi):
+        return None
+    return {
+        "imsi": imsi,
+        "tmsi1": parts[1] or None,
+        "tmsi2": parts[2] or None,
+        "country": parts[4] or None,
+        "brand": parts[5] or None,
+        "operator": parts[6] or None,
+        "mcc": parts[7] or None,
+        "mnc": parts[8] or None,
+    }
+
+
+def parse_observation_line(line: str) -> dict | None:
+    """Dispatch to the console parser (catcher log) or the CSV txt parser."""
+    return parse_console_line(line) if ";" in line else parse_line(line)
+
+
 def capture_new_observations(tail_reader: TailReader, spool, device_name: str, get_fix=None) -> int:
     count = 0
     for raw_line in tail_reader.read_new_lines():
-        parsed = parse_line(raw_line)
+        parsed = parse_observation_line(raw_line)
         if parsed is None:
             continue
         observation = dict(parsed)

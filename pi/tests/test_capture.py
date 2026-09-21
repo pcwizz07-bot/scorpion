@@ -77,6 +77,71 @@ def test_parse_line_rejects_too_few_fields():
     assert parse_line("only,three,fields") is None
 
 
+# ---- console (catcher log) format ----
+def test_parse_console_line_returns_observation_with_tmsi():
+    line = (
+        "1292    ; 0x93b18963 ;            ; 655 01 5271674656 ; South Africa     ; "
+        "Vodacom        ; Vodacom               ; 655  ; 01    ; 352    ; 17101  ; 2026-09-21T07:45:33.442431"
+    )
+
+    obs = capture.parse_console_line(line)
+
+    assert obs is not None
+    assert obs["imsi"] == "655015271674656"
+    assert obs["tmsi1"] == "0x93b18963"
+    assert obs["tmsi2"] is None
+    assert obs["country"] == "South Africa"
+    assert obs["brand"] == "Vodacom"
+    assert obs["mcc"] == "655"
+    assert obs["mnc"] == "01"
+
+
+def test_parse_console_line_captures_full_tmsi_chain():
+    line = (
+        "1295    ; 0x5fa32f61 ; 0xd84275f4 ; 655 01 7782465885 ; South Africa     ; "
+        "Vodacom        ; Vodacom               ; 655  ; 01    ; 352    ; 17101  ; 2026-09-21T07:46:11.208231"
+    )
+
+    obs = capture.parse_console_line(line)
+
+    assert obs is not None
+    assert obs["tmsi1"] == "0x5fa32f61"
+    assert obs["tmsi2"] == "0xd84275f4"
+
+
+def test_parse_console_line_skips_header_and_garbage():
+    header = (
+        "Nb IMSI ; TMSI-1 ; TMSI-2 ; IMSI ; country ; brand ; operator ; "
+        "MCC ; MNC ; LAC ; CellId ; Timestamp"
+    )
+    assert capture.parse_console_line(header) is None
+    assert capture.parse_console_line("Saving to SQLite database in observations.db") is None
+    assert capture.parse_console_line("") is None
+
+
+def test_parse_console_line_rejects_bad_imsi():
+    line = "1    ; 0x01 ; ; abc123 ; ZA ; V ; V ; 655 ; 01 ; 1 ; 1 ; 2026-09-21T07:45:00"
+
+    assert capture.parse_console_line(line) is None
+
+
+def test_tail_reader_starts_at_end_on_unknown_inode(tmp_path):
+    path = tmp_path / "imsi.txt"
+    path.write_text(HEADER + "2026-01-01T00:00:00,0x1,0x2,111222333444555,ZA,Vodacom,Vodacom,655,01,1,1\n")
+    reader = TailReader(str(path))
+
+    # First read on an unknown inode must NOT replay pre-existing history.
+    assert reader.read_new_lines() == []
+
+    with open(path, "a") as f:
+        f.write("2026-01-01T00:00:00,0x3,0x4,999888777666555,ZA,Vodacom,Vodacom,655,01,1,1\n")
+
+    lines = reader.read_new_lines()
+
+    assert len(lines) == 1
+    assert "999888777666555" in lines[0]
+
+
 def test_tail_reader_returns_only_new_lines(tmp_path):
     path = tmp_path / "imsi.txt"
     path.write_text(HEADER)
@@ -134,13 +199,16 @@ def test_capture_new_observations_pushes_parsed_lines_to_spool(tmp_path):
     path = tmp_path / "imsi.txt"
     path.write_text(HEADER + "2026-01-01T00:00:00,123,1,111222333444555,ZA,Vodacom,Vodacom,655,01,1,1\n")
     reader = TailReader(str(path))
+    reader.read_new_lines()  # consume pre-existing history (start-at-end contract)
+    with open(path, "a") as f:
+        f.write("2026-01-01T00:00:01,123,1,222333444555666,ZA,Vodacom,Vodacom,655,01,1,1\n")
     spool = Spool(str(tmp_path / "spool.db"))
 
     count = capture_new_observations(reader, spool, device_name="Pi-1")
 
     assert count == 1
     pending = spool.pending()
-    assert pending[0]["observation"]["imsi"] == "111222333444555"
+    assert pending[0]["observation"]["imsi"] == "222333444555666"
     assert pending[0]["observation"]["device_name"] == "Pi-1"
     assert "observed_at" in pending[0]["observation"]
 
@@ -149,6 +217,9 @@ def test_capture_new_observations_includes_gnss_fix_when_available(tmp_path):
     path = tmp_path / "imsi.txt"
     path.write_text(HEADER + "2026-01-01T00:00:00,123,1,111222333444555,ZA,Vodacom,Vodacom,655,01,1,1\n")
     reader = TailReader(str(path))
+    reader.read_new_lines()  # consume pre-existing history
+    with open(path, "a") as f:
+        f.write("2026-01-01T00:00:01,123,1,222333444555666,ZA,Vodacom,Vodacom,655,01,1,1\n")
     spool = Spool(str(tmp_path / "spool.db"))
 
     count = capture_new_observations(

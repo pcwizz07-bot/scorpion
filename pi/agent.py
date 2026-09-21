@@ -129,6 +129,14 @@ def send_loop(
         except TransportRetryableError:
             backoff = next_backoff_seconds(backoff)
             stop_event.wait(backoff)
+        except Exception as exc:  # never let one bad flush kill the sender
+            # A transient sqlite lock or unexpected error used to kill this
+            # thread (e.g. "database is locked" during mark_sent) and then
+            # NOTHING synced until the whole agent restarted. Log, back off,
+            # and retry — rows stay queued until they go through.
+            capture.supervisor_log(f"send error: {exc!r}")
+            backoff = next_backoff_seconds(backoff)
+            stop_event.wait(backoff)
 
 
 def capture_supervisor_loop(
@@ -176,7 +184,7 @@ def main() -> None:
             return None
         return gnss.get_fix(cfg.gnss_serial, cfg.gnss_baud)
 
-    reader = capture.TailReader(cfg.capture_txt)
+    reader = capture.TailReader(capture.CATCHER_LOG_PATH)
     stop_event = threading.Event()
 
     def handle_signal(signum, frame):

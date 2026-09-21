@@ -65,3 +65,15 @@ def test_pending_respects_limit(tmp_path):
     pending = spool.pending(limit=3)
 
     assert len(pending) == 3
+
+
+def test_connect_sets_busy_timeout_to_avoid_lock_races(tmp_path):
+    spool = Spool(str(tmp_path / "spool.db"))
+
+    conn = spool._connect()
+    try:
+        row = conn.execute("PRAGMA busy_timeout").fetchone()
+    finally:
+        conn.close()
+
+    assert row[0] == 5000

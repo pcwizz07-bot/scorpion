@@ -40,6 +40,42 @@ def test_save_state_sets_file_permissions_to_600(tmp_path):
     assert mode == 0o600
 
 
+def test_send_loop_survives_spool_lock_error(tmp_path):
+    import sqlite3
+    import threading
+
+    from pi.node.spool import Spool
+
+    from pi.agent import send_loop
+
+    spool = Spool(str(tmp_path / "spool.db"))
+    spool.append({"imsi": "111222333444555"})
+    stop = threading.Event()
+    calls = {"n": 0}
+
+    def flaky_send_fn(device_id, device_token, observations):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise sqlite3.OperationalError("database is locked")
+        stop.set()
+        return {"created": 1, "duplicates": 0}
+
+    transport = _FakeTransport()
+    send_loop(
+        spool,
+        transport,
+        {"device_id": "d", "device_token": "t"},
+        object(),
+        str(tmp_path / "state.json"),
+        stop,
+        send_fn=flaky_send_fn,
+    )
+
+    # The transient lock error must not kill the sender: it retries and drains.
+    assert calls["n"] == 2
+    assert spool.pending() == []
+
+
 def test_load_state_returns_none_when_file_missing(tmp_path):
     path = str(tmp_path / "missing.json")
 
