@@ -74,6 +74,78 @@ class ObservationOut(BaseModel):
     observed_at: datetime
 
 
+class LteCellIn(BaseModel):
+    pci: int
+    tac: int | None = None
+    band: int | None = None
+    earfcn: int | None = None
+    freq_mhz: float | None = None
+    plmn: str | None = None
+    signal_dbm: int | None = None
+    observed_at: datetime | None = None
+
+
+class LteCellsBatchRequest(BaseModel):
+    cells: list[LteCellIn] = Field(max_length=200)
+
+
+class LteCellsBatchResponse(BaseModel):
+    created: int
+
+
+class LteCellOut(BaseModel):
+    id: int
+    device_id: str
+    device_name: str | None
+    pci: int
+    tac: int | None
+    band: int | None
+    earfcn: int | None
+    freq_mhz: float | None
+    plmn: str | None
+    signal_dbm: int | None
+    observed_at: datetime
+
+
+class LteIdentityIn(BaseModel):
+    kind: Literal["imsi", "imei", "imeisv"]
+    value: str
+    s_tmsi: str | None = None
+    pci: int | None = None
+    tac: int | None = None
+    earfcn: int | None = None
+    band: int | None = None
+    plmn: str | None = None
+    observed_at: datetime | None = None
+
+
+class LteIdentitiesBatchRequest(BaseModel):
+    identities: list[LteIdentityIn] = Field(max_length=200)
+
+
+class LteIdentitiesBatchResponse(BaseModel):
+    created: int
+    duplicates: int
+
+
+class LteIdentityOut(BaseModel):
+    id: int
+    device_id: str
+    device_name: str | None
+    kind: str
+    value_masked: str
+    # Full decrypted value. Only populated for provisioning-token (admin) reads;
+    # device-token reads get None like observations.
+    value: str | None = None
+    s_tmsi: str | None
+    pci: int | None
+    tac: int | None
+    earfcn: int | None
+    band: int | None
+    plmn: str | None
+    observed_at: datetime
+
+
 class PresenceEventIn(BaseModel):
     kind: Literal["plu", "attach", "page", "reauth"]
     tmsi_old: str | None = None

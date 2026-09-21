@@ -102,6 +102,52 @@ class PresenceEvent(Base):
     )
 
 
+class LteCell(Base):
+    __tablename__ = "lte_cells"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    device_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("devices.id"), nullable=False)
+    pci: Mapped[int] = mapped_column(Integer, nullable=False)
+    tac: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    band: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    earfcn: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    freq_mhz: Mapped[float | None] = mapped_column(Double, nullable=True)
+    plmn: Mapped[str | None] = mapped_column(Text, nullable=True)  # "MCC-MNC"
+    signal_dbm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_lte_cells_device_id_observed_at", "device_id", "observed_at"),
+        Index("ix_lte_cells_observed_at", "observed_at"),
+        Index("ix_lte_cells_pci", "pci"),
+    )
+
+
+class LteIdentity(Base):
+    __tablename__ = "lte_identities"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    device_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("devices.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)  # imsi | imei | imeisv
+    value_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    value_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    s_tmsi: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pci: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tac: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    earfcn: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    band: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    plmn: Mapped[str | None] = mapped_column(Text, nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_lte_identities_value_hash", "value_hash"),
+        Index("ix_lte_identities_device_id_observed_at", "device_id", "observed_at"),
+        Index("ix_lte_identities_observed_at", "observed_at"),
+    )
+
+
 class Alert(Base):
     __tablename__ = "alerts"
 
