@@ -1,6 +1,6 @@
 """LTE scan parsers, tested against real captured CellSearch/rtl_power output."""
 
-from pi.node.lte_scan import parse_cellsearch, parse_rtl_power
+from pi.node.lte_scan import band_and_earfcn, parse_cellsearch, parse_rtl_power
 
 
 REAL_CELLSEARCH_OUT = """LTE CellSearch v1.0.0 (release) beginning
@@ -47,3 +47,10 @@ def test_parse_rtl_power_returns_strongest_frequencies():
     assert peaks[0] == 937.5
     # Second-best: -12.0 in the 935e6 row at index 2 -> 935.0 + 0.2*2.5 = 935.5
     assert peaks[1] == 935.5
+
+
+def test_band_and_earfcn_maps_lte900_and_dcs1800():
+    assert band_and_earfcn(926.0) == (8, 3460)
+    assert band_and_earfcn(944.7) == (8, 3647)
+    assert band_and_earfcn(1830.0) == (3, 1450)
+    assert band_and_earfcn(700.0) == (None, None)

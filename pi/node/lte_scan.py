@@ -26,6 +26,21 @@ _FREQ_RE = re.compile(r"Examining center frequency ([\d.]+) MHz")
 _CELL_RE = re.compile(r"cell ID: (\d+)")
 _RX_RE = re.compile(r"RX power level: ([-\d.]+) dB")
 
+# LTE downlink bands reachable by the R820T2 dongle (24-1766 MHz).
+# (band, dl_low_mhz, dl_high_mhz, earfcn_low)
+LTE_BANDS = [
+    (8, 925.0, 960.0, 3450),    # LTE900
+    (3, 1805.0, 1880.0, 1200),  # DCS1800 (V3 dongle reaches 1766; partial coverage)
+]
+
+
+def band_and_earfcn(freq_mhz: float) -> tuple[int | None, int | None]:
+    """Map a downlink frequency to (band, earfcn) using the configured LTE bands."""
+    for band, low, high, earfcn_low in LTE_BANDS:
+        if low <= freq_mhz <= high:
+            return band, round((freq_mhz - low) * 10 + earfcn_low)
+    return None, None
+
 
 def parse_cellsearch(stdout: str) -> list[dict]:
     """Parse CellSearch output into [{pci, freq_mhz, signal_raw}] detections."""
@@ -89,31 +104,34 @@ def run_cellsearch(start_mhz: float, end_mhz: float, timeout_s: int = 120) -> st
     return (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
 
 
-def scan_cells(low_mhz: float = 925.0, high_mhz: float = 947.9) -> list[dict]:
-    """Full scan: pick peaks, hunt each, return parsed detections.
+def scan_cells(bands: list[tuple[int, float, float, int]] | None = None) -> list[dict]:
+    """Scan each reachable LTE band: pick peaks, hunt each, collect detections.
 
     A slow/stuck hunt on one peak must never kill the whole run — it is
     logged and skipped so the remaining peaks still get scanned.
     """
-    sweep = run_rtl_power(low_mhz, high_mhz)
-    peaks = parse_rtl_power(sweep, top_n=2)
+    bands = bands or [b for b in LTE_BANDS if b[2] <= 1766.0]  # R820T2 reach
     cells: list[dict] = []
-    for peak in peaks:
-        lo = max(low_mhz, peak - PEAK_HUNT_BANDWIDTH_MHZ / 2)
-        hi = min(high_mhz, peak + PEAK_HUNT_BANDWIDTH_MHZ / 2)
-        try:
-            out = run_cellsearch(lo, hi, timeout_s=PEAK_HUNT_TIMEOUT_S)
-        except subprocess.TimeoutExpired:
-            print(f"hunt at {peak:.3f} MHz timed out; skipping", file=sys.stderr)
-            continue
-        except subprocess.SubprocessError as exc:
-            print(f"hunt at {peak:.3f} MHz failed: {exc!r}", file=sys.stderr)
-            continue
-        for cell in parse_cellsearch(out):
-            cell["earfcn"] = round((cell["freq_mhz"] - 925.0) * 10 + 3500)
-            cell["band"] = 8
-            if cell not in cells:
-                cells.append(cell)
+    for band, low_mhz, high_mhz, _earfcn_low in bands:
+        sweep = run_rtl_power(low_mhz, high_mhz)
+        peaks = parse_rtl_power(sweep, top_n=2)
+        for peak in peaks:
+            lo = max(low_mhz, peak - PEAK_HUNT_BANDWIDTH_MHZ / 2)
+            hi = min(high_mhz, peak + PEAK_HUNT_BANDWIDTH_MHZ / 2)
+            try:
+                out = run_cellsearch(lo, hi, timeout_s=PEAK_HUNT_TIMEOUT_S)
+            except subprocess.TimeoutExpired:
+                print(f"hunt at {peak:.3f} MHz timed out; skipping", file=sys.stderr)
+                continue
+            except subprocess.SubprocessError as exc:
+                print(f"hunt at {peak:.3f} MHz failed: {exc!r}", file=sys.stderr)
+                continue
+            for cell in parse_cellsearch(out):
+                cell_band, earfcn = band_and_earfcn(cell["freq_mhz"])
+                cell["earfcn"] = earfcn
+                cell["band"] = cell_band
+                if cell not in cells:
+                    cells.append(cell)
     return cells
 
 
