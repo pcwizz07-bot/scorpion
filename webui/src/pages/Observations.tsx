@@ -36,6 +36,7 @@ export function Observations() {
             <th className="p-2">Time</th>
             <th className="p-2">Device</th>
             <th className="p-2">IMSI</th>
+            <th className="p-2">TMSI</th>
             <th className="p-2">MCC/MNC</th>
             <th className="p-2">Country</th>
             <th className="p-2">Brand</th>
@@ -49,6 +50,9 @@ export function Observations() {
               <td className="p-2">{o.observed_at}</td>
               <td className="p-2">{o.device_name ?? o.device_id}</td>
               <td className="p-2 font-mono">{o.imsi ?? o.imsi_masked}</td>
+              <td className="p-2 font-mono">
+                {o.tmsi1 ? (o.tmsi2 && o.tmsi2 !== o.tmsi1 ? `${o.tmsi1} → ${o.tmsi2}` : o.tmsi1) : "?"}
+              </td>
               <td className="p-2">
                 {o.mcc ?? "?"}/{o.mnc ?? "?"}
               </td>

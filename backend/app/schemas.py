@@ -69,6 +69,8 @@ class ObservationOut(BaseModel):
     brand: str | None
     operator: str | None
     signal_dbm: int | None
+    tmsi1: str | None = None
+    tmsi2: str | None = None
     observed_at: datetime
 
 

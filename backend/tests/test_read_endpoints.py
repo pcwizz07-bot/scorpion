@@ -77,6 +77,27 @@ def test_observations_response_never_leaks_full_imsi(client, registered_device):
     assert FAKE_IMSI_2 not in resp.text
 
 
+def test_observations_includes_tmsi_fields(client, registered_device):
+    client.post(
+        "/api/v1/observations",
+        json={
+            "observations": [
+                {
+                    "imsi": FAKE_IMSI_1,
+                    "tmsi1": "0x1234abcd",
+                    "tmsi2": "0x5678ef01",
+                }
+            ]
+        },
+        headers=_device_headers(registered_device),
+    )
+    resp = client.get("/api/v1/observations", headers=_device_headers(registered_device))
+    assert resp.status_code == 200
+    row = resp.json()[0]
+    assert row["tmsi1"] == "0x1234abcd"
+    assert row["tmsi2"] == "0x5678ef01"
+
+
 def test_observations_respects_limit(client, registered_device):
     client.post(
         "/api/v1/observations",

@@ -131,6 +131,8 @@ def list_observations(
             brand=row.brand,
             operator=row.operator,
             signal_dbm=row.signal_dbm,
+            tmsi1=row.tmsi1,
+            tmsi2=row.tmsi2,
             observed_at=row.observed_at,
         )
         for row, device_name, plain in (
