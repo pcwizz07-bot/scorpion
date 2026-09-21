@@ -10,6 +10,7 @@ Uses the Evrytania LTE-Cell-Scanner toolchain built at /opt/lte-cell-scanner
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 BIN_DIR = "/opt/lte-cell-scanner/build/src"
@@ -17,7 +18,8 @@ CELL_SEARCH = "CellSearch"
 RTL_POWER = "rtl_power"
 STATE_FILE = "/var/lib/scorpion/state.json"
 CONFIG_PATH = "/etc/scorpion/agent.conf"
-PEAK_HUNT_BANDWIDTH_MHZ = 0.4  # +/- 0.2 MHz around each peak
+PEAK_HUNT_BANDWIDTH_MHZ = 0.3  # +/- 0.15 MHz around each peak
+PEAK_HUNT_TIMEOUT_S = 180
 
 
 _FREQ_RE = re.compile(r"Examining center frequency ([\d.]+) MHz")
@@ -88,14 +90,25 @@ def run_cellsearch(start_mhz: float, end_mhz: float, timeout_s: int = 120) -> st
 
 
 def scan_cells(low_mhz: float = 925.0, high_mhz: float = 947.9) -> list[dict]:
-    """Full scan: pick peaks, hunt each, return parsed detections."""
+    """Full scan: pick peaks, hunt each, return parsed detections.
+
+    A slow/stuck hunt on one peak must never kill the whole run — it is
+    logged and skipped so the remaining peaks still get scanned.
+    """
     sweep = run_rtl_power(low_mhz, high_mhz)
-    peaks = parse_rtl_power(sweep)
+    peaks = parse_rtl_power(sweep, top_n=2)
     cells: list[dict] = []
     for peak in peaks:
         lo = max(low_mhz, peak - PEAK_HUNT_BANDWIDTH_MHZ / 2)
         hi = min(high_mhz, peak + PEAK_HUNT_BANDWIDTH_MHZ / 2)
-        out = run_cellsearch(lo, hi)
+        try:
+            out = run_cellsearch(lo, hi, timeout_s=PEAK_HUNT_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            print(f"hunt at {peak:.3f} MHz timed out; skipping", file=sys.stderr)
+            continue
+        except subprocess.SubprocessError as exc:
+            print(f"hunt at {peak:.3f} MHz failed: {exc!r}", file=sys.stderr)
+            continue
         for cell in parse_cellsearch(out):
             cell["earfcn"] = round((cell["freq_mhz"] - 925.0) * 10 + 3500)
             cell["band"] = 8
@@ -130,13 +143,16 @@ def post_cells(cells: list[dict], identity: dict, server_url: str) -> dict:
 def main() -> int:
     from pi.node.config import load_config
 
-    cfg = load_config(config_path=CONFIG_PATH)
-    cells = scan_cells()
-    if not cells:
-        return 0
-    identity = load_identity()
-    result = post_cells(cells, identity, cfg.server_url)
-    print(json.dumps({"posted": result, "cells": cells}))
+    try:
+        cfg = load_config(config_path=CONFIG_PATH)
+        cells = scan_cells()
+        if not cells:
+            return 0
+        identity = load_identity()
+        result = post_cells(cells, identity, cfg.server_url)
+        print(json.dumps({"posted": result, "cells": cells}))
+    except Exception as exc:  # never crash the wrapper: log and exit clean
+        print(f"lte scan error: {exc!r}", file=sys.stderr)
     return 0
 
 
