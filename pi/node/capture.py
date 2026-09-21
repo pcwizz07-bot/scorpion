@@ -199,6 +199,9 @@ def parse_line(line: str) -> dict | None:
         return None
     return {
         "imsi": imsi,
+        # Scanner CSV order: stamp, tmsi1, tmsi2, imsi, country, ...
+        "tmsi1": parts[1] or None,
+        "tmsi2": parts[2] or None,
         "country": parts[4] or None,
         "brand": parts[5] or None,
         "operator": parts[6] or None,

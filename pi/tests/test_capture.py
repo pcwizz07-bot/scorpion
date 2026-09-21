@@ -7,11 +7,12 @@ from pi.node import capture
 from pi.node.capture import TailReader, capture_new_observations, parse_line
 from pi.node.spool import Spool
 
-HEADER = "stamp,arfcn,mcc_id,imsi,country,brand,operator,mcc,mnc,lac,cellid\n"
+# Real simple_IMSI-catcher --txt header (scanner writes stamp, tmsi1, tmsi2, imsi, ...).
+HEADER = "stamp, tmsi1, tmsi2, imsi, imsicountry, imsibrand, imsioperator, mcc, mnc, lac, cell\n"
 
 
 def test_parse_line_returns_observation_for_valid_csv_line():
-    line = "2026-01-01T00:00:00,123,1,111222333444555,ZA,Vodacom,Vodacom,655,01,1,1"
+    line = "2026-01-01T00:00:00,0x1234abcd,0x5678ef01,111222333444555,ZA,Vodacom,Vodacom,655,01,1,1"
 
     obs = parse_line(line)
 
@@ -23,8 +24,28 @@ def test_parse_line_returns_observation_for_valid_csv_line():
     assert obs["mnc"] == "01"
 
 
+def test_parse_line_captures_tmsi_chain():
+    line = "2026-01-01T00:00:00,0x1234abcd,0x5678ef01,111222333444555,ZA,Vodacom,Vodacom,655,01,1,1"
+
+    obs = parse_line(line)
+    assert obs is not None
+
+    assert obs["tmsi1"] == "0x1234abcd"
+    assert obs["tmsi2"] == "0x5678ef01"
+
+
+def test_parse_line_tmsi_empty_becomes_none():
+    line = "2026-01-01T00:00:00,,,111222333444555,ZA,Vodacom,Vodacom,655,01,1,1"
+
+    obs = parse_line(line)
+    assert obs is not None
+
+    assert obs["tmsi1"] is None
+    assert obs["tmsi2"] is None
+
+
 def test_parse_line_strips_spaces_in_imsi():
-    line = "2026-01-01T00:00:00,123,1, 111 222 333 444 555 ,ZA,Vodacom,Vodacom,655,01,1,1"
+    line = "2026-01-01T00:00:00,0x1234abcd,0x5678ef01, 111 222 333 444 555 ,ZA,Vodacom,Vodacom,655,01,1,1"
 
     obs = parse_line(line)
 
@@ -32,7 +53,7 @@ def test_parse_line_strips_spaces_in_imsi():
 
 
 def test_parse_line_skips_header_line():
-    assert parse_line("stamp,arfcn,mcc_id,imsi,country,brand,operator,mcc,mnc,lac,cellid") is None
+    assert parse_line("stamp, tmsi1, tmsi2, imsi, imsicountry, imsibrand, imsioperator, mcc, mnc, lac, cell") is None
 
 
 def test_parse_line_skips_blank_line():
@@ -41,13 +62,13 @@ def test_parse_line_skips_blank_line():
 
 
 def test_parse_line_rejects_imsi_too_short():
-    line = "2026-01-01T00:00:00,123,1,1234,ZA,Vodacom,Vodacom,655,01,1,1"
+    line = "2026-01-01T00:00:00,0x1234abcd,0x5678ef01,1234,ZA,Vodacom,Vodacom,655,01,1,1"
 
     assert parse_line(line) is None
 
 
 def test_parse_line_rejects_non_digit_imsi():
-    line = "2026-01-01T00:00:00,123,1,11122abc3444555,ZA,Vodacom,Vodacom,655,01,1,1"
+    line = "2026-01-01T00:00:00,0x1234abcd,0x5678ef01,11122abc3444555,ZA,Vodacom,Vodacom,655,01,1,1"
 
     assert parse_line(line) is None
 
