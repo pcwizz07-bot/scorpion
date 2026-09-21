@@ -41,7 +41,7 @@ def test_observations_masks_imsi_and_orders_newest_first(client, registered_devi
     # newest first: the second-posted IMSI (FAKE_IMSI_2) comes first
     assert body[0]["imsi_masked"] == "223456***46"
     assert body[1]["imsi_masked"] == "123456***45"
-    assert "imsi" not in body[0]
+    assert body[0]["imsi"] is None  # device token: full IMSI never present
     assert "imsi_encrypted" not in body[0]
     assert body[0]["country"] == "TZ"
     assert body[0]["device_id"] == registered_device["device_id"]

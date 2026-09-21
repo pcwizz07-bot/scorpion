@@ -58,6 +58,9 @@ class ObservationOut(BaseModel):
     device_id: str
     device_name: str | None
     imsi_masked: str
+    # Full decrypted IMSI. Only populated for provisioning-token (admin) reads;
+    # device-token reads get None so capture nodes never see raw subscriber IDs.
+    imsi: str | None = None
     mcc: str | None
     mnc: str | None
     lac: int | None

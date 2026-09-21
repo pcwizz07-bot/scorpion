@@ -109,8 +109,9 @@ def list_observations(
     limit: int = 50,
     device_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    _: None = Depends(require_device_or_provisioning_token),
+    privilege: str = Depends(require_device_or_provisioning_token),
 ) -> list[ObservationOut]:
+    privileged = privilege == "provisioning"
     query = db.query(ImsiObservation, Device.name).join(Device, ImsiObservation.device_id == Device.id)
     if device_id is not None:
         query = query.filter(ImsiObservation.device_id == device_id)
@@ -120,7 +121,8 @@ def list_observations(
             id=row.id,
             device_id=str(row.device_id),
             device_name=device_name,
-            imsi_masked=mask_imsi(imsi_decrypt(row.imsi_encrypted)),
+            imsi_masked=mask_imsi(plain),
+            imsi=plain if privileged else None,
             mcc=row.mcc,
             mnc=row.mnc,
             lac=row.lac,
@@ -131,5 +133,7 @@ def list_observations(
             signal_dbm=row.signal_dbm,
             observed_at=row.observed_at,
         )
-        for row, device_name in rows
+        for row, device_name, plain in (
+            (row, device_name, imsi_decrypt(row.imsi_encrypted)) for row, device_name in rows
+        )
     ]

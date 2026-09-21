@@ -46,6 +46,7 @@ export type Observation = {
   device_id: string;
   device_name: string | null;
   imsi_masked: string;
+  imsi: string | null;
   mcc: string | null;
   mnc: string | null;
   lac: number | null;
