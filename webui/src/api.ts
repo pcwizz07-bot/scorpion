@@ -83,6 +83,20 @@ export type Stats = {
   alerts_open: number;
 };
 
+export type LteCell = {
+  id: number;
+  device_id: string;
+  device_name: string | null;
+  pci: number | null;
+  tac: number | null;
+  band: number | null;
+  earfcn: number | null;
+  freq_mhz: number | null;
+  plmn: string | null;
+  signal_dbm: number | null;
+  observed_at: string;
+};
+
 export const api = {
   health: () => request<Health>("/health"),
   stats: () => request<Stats>("/stats"),
@@ -94,4 +108,5 @@ export const api = {
     }),
   observations: (limit: number) => request<Observation[]>(`/observations?limit=${limit}`),
   alerts: (limit: number) => request<Alert[]>(`/alerts?limit=${limit}`),
+  lteCells: (limit: number) => request<LteCell[]>(`/lte/cells?limit=${limit}`),
 };

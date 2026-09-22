@@ -3,9 +3,10 @@ import { clearToken, getToken, setToken } from "./api";
 import { Alerts } from "./pages/Alerts";
 import { Dashboard } from "./pages/Dashboard";
 import { Devices } from "./pages/Devices";
+import { LteCells } from "./pages/LteCells";
 import { Observations } from "./pages/Observations";
 
-const PAGES = ["Dashboard", "Devices", "Observations", "Alerts"] as const;
+const PAGES = ["Dashboard", "Devices", "Observations", "LTE Cells", "Alerts"] as const;
 type Page = (typeof PAGES)[number];
 
 function TokenGate({ onSet }: { onSet: () => void }) {
@@ -74,6 +75,7 @@ export default function App() {
         {page === "Dashboard" && <Dashboard />}
         {page === "Devices" && <Devices />}
         {page === "Observations" && <Observations />}
+        {page === "LTE Cells" && <LteCells />}
         {page === "Alerts" && <Alerts />}
       </main>
     </div>
