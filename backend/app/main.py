@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.api import alerts, audit, devices, lte, observations, presence, stats
+from app.api import alerts, audit, devices, known, lte, observations, presence, stats
 
 WEBUI_DIST = Path(__file__).resolve().parent.parent.parent / "webui" / "dist"
 
@@ -29,6 +29,7 @@ def create_app() -> FastAPI:
     app.include_router(audit.router, prefix="/api/v1")
     app.include_router(stats.router, prefix="/api/v1")
     app.include_router(lte.router, prefix="/api/v1")
+    app.include_router(known.router, prefix="/api/v1")
 
     # Serve the built SPA at /portal, same origin as the API (no CORS needed).
     # The webui has no client-side URL routing (tab state only), so a plain

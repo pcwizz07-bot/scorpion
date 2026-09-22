@@ -47,6 +47,7 @@ export type Observation = {
   device_name: string | null;
   imsi_masked: string;
   imsi: string | null;
+  known: string | null;
   tmsi1: string | null;
   tmsi2: string | null;
   mcc: string | null;

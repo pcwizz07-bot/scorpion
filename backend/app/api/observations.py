@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.crypto import imsi_decrypt, imsi_encrypt, imsi_hash, mask_imsi
 from app.db import get_db
-from app.models import Alert, Device, ImsiObservation, TrackedImsi
+from app.models import Alert, Device, ImsiObservation, KnownIdentity, TrackedImsi
 from app.schemas import ObservationOut, ObservationsBatchRequest, ObservationsBatchResponse
 from app.security import require_device_or_provisioning_token, require_device_token
 
@@ -123,6 +123,9 @@ def list_observations(
             device_name=device_name,
             imsi_masked=mask_imsi(plain),
             imsi=plain if privileged else None,
+            known=db.query(KnownIdentity.label)
+            .filter(KnownIdentity.value_hash == row.imsi_hash)
+            .scalar(),
             mcc=row.mcc,
             mnc=row.mnc,
             lac=row.lac,

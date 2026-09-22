@@ -61,6 +61,8 @@ class ObservationOut(BaseModel):
     # Full decrypted IMSI. Only populated for provisioning-token (admin) reads;
     # device-token reads get None so capture nodes never see raw subscriber IDs.
     imsi: str | None = None
+    # Label from the known-identity registry, when this IMSI is marked.
+    known: str | None = None
     mcc: str | None
     mnc: str | None
     lac: int | None
@@ -139,6 +141,8 @@ class LteIdentityOut(BaseModel):
     # Full decrypted value. Only populated for provisioning-token (admin) reads;
     # device-token reads get None like observations.
     value: str | None = None
+    # Label from the known-identity registry, when this identity is marked.
+    known: str | None = None
     s_tmsi: str | None
     pci: int | None
     tac: int | None
@@ -146,6 +150,21 @@ class LteIdentityOut(BaseModel):
     band: int | None
     plmn: str | None
     observed_at: datetime
+
+
+class KnownIdentityIn(BaseModel):
+    kind: Literal["imsi", "imei", "imeisv"]
+    value: str
+    label: str
+    is_own: bool = False
+
+
+class KnownIdentityOut(BaseModel):
+    id: int
+    kind: str
+    label: str
+    is_own: bool
+    created_at: datetime
 
 
 class PresenceEventIn(BaseModel):

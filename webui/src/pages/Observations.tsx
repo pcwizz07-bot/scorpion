@@ -3,6 +3,7 @@ import { api, type Observation } from "../api";
 
 export function Observations() {
   const [limit, setLimit] = useState(50);
+  const [hideKnown, setHideKnown] = useState(false);
   const [observations, setObservations] = useState<Observation[]>([]);
   const [error, setError] = useState("");
 
@@ -28,6 +29,14 @@ export function Observations() {
         <button onClick={refresh} className="rounded bg-blue-700 px-4 py-2">
           Refresh
         </button>
+        <label className="flex items-center gap-2 text-sm text-neutral-400">
+          <input
+            type="checkbox"
+            checked={hideKnown}
+            onChange={(e) => setHideKnown(e.target.checked)}
+          />
+          Hide known
+        </label>
       </div>
 
       <table className="w-full text-left text-sm">
@@ -45,11 +54,15 @@ export function Observations() {
           </tr>
         </thead>
         <tbody>
-          {observations.map((o) => (
+          {observations
+            .filter((o) => !(hideKnown && o.known))
+            .map((o) => (
             <tr key={o.id} className="border-b border-neutral-900">
               <td className="p-2">{o.observed_at}</td>
               <td className="p-2">{o.device_name ?? o.device_id}</td>
-              <td className="p-2 font-mono">{o.imsi ?? o.imsi_masked}</td>
+              <td className="p-2 font-mono">{o.imsi ?? o.imsi_masked}
+                {o.known && <span className="ml-2 rounded bg-green-900 px-1.5 py-0.5 text-xs text-green-300">{o.known}</span>}
+              </td>
               <td className="p-2 font-mono">
                 {o.tmsi1 ? (o.tmsi2 && o.tmsi2 !== o.tmsi1 ? `${o.tmsi1} → ${o.tmsi2}` : o.tmsi1) : "?"}
               </td>

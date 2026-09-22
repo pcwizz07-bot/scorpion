@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.crypto import imsi_decrypt, imsi_encrypt, imsi_hash, mask_imsi
 from app.db import get_db
-from app.models import Device, LteCell, LteIdentity
+from app.models import Device, KnownIdentity, LteCell, LteIdentity
 from app.schemas import (
     LteCellOut,
     LteCellsBatchRequest,
@@ -164,6 +164,9 @@ def list_lte_identities(
             kind=row.kind,
             value_masked=mask_imsi(plain),
             value=plain if privileged else None,
+            known=db.query(KnownIdentity.label)
+            .filter(KnownIdentity.value_hash == row.value_hash)
+            .scalar(),
             s_tmsi=row.s_tmsi,
             pci=row.pci,
             tac=row.tac,

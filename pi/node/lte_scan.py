@@ -8,18 +8,22 @@ Uses the Evrytania LTE-Cell-Scanner toolchain built at /opt/lte-cell-scanner
     POST /api/v1/lte/cells using the agent identity.
 """
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 BIN_DIR = "/opt/lte-cell-scanner/build/src"
 CELL_SEARCH = "CellSearch"
 RTL_POWER = "rtl_power"
 STATE_FILE = "/var/lib/scorpion/state.json"
+LAST_STATE_FILE = "/var/lib/scorpion/lte_last_state.json"
 CONFIG_PATH = "/etc/scorpion/agent.conf"
 PEAK_HUNT_BANDWIDTH_MHZ = 0.3  # +/- 0.15 MHz around each peak
 PEAK_HUNT_TIMEOUT_S = 180
+LOOP_DEFAULT_INTERVAL_S = 60.0
 
 
 _FREQ_RE = re.compile(r"Examining center frequency ([\d.]+) MHz")
@@ -185,18 +189,55 @@ def post_cells(cells: list[dict], identity: dict, server_url: str) -> dict:
         return json.loads(resp.read().decode())
 
 
+def signature(cells: list[dict]) -> list[tuple[float, int]]:
+    """Normalized fingerprint: rounded freq + power, so small noise is ignored."""
+    return sorted((round(float(c["freq_mhz"]), 2), int(c.get("signal_dbm") or 0)) for c in cells)
+
+
+def load_last_signature() -> list[tuple[float, int]] | None:
+    try:
+        with open(LAST_STATE_FILE, encoding="utf-8") as f:
+            return [tuple(x) for x in json.load(f)]
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def save_signature(sig: list[tuple[float, int]]) -> None:
+    try:
+        with open(LAST_STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(sig, f)
+    except OSError:
+        pass
+
+
 def main() -> int:
     from pi.node.config import load_config
 
     energy_only = "--energy" in sys.argv
+    loop = "--loop" in sys.argv
+    interval = LOOP_DEFAULT_INTERVAL_S
+    if "--interval" in sys.argv:
+        try:
+            interval = float(sys.argv[sys.argv.index("--interval") + 1])
+        except (ValueError, IndexError):
+            pass
     try:
         cfg = load_config(config_path=CONFIG_PATH)
-        cells = scan_energy() if energy_only else scan_cells()
-        if not cells:
-            return 0
         identity = load_identity()
-        result = post_cells(cells, identity, cfg.server_url)
-        print(json.dumps({"posted": result, "cells": cells}))
+        last_sig = load_last_signature() if loop else object()
+        while True:
+            cells = scan_energy() if energy_only else scan_cells()
+            sig = signature(cells)
+            if sig and sig != last_sig:
+                result = post_cells(cells, identity, cfg.server_url)
+                print(json.dumps({"posted": result, "cells": cells}))
+                save_signature(sig)
+                last_sig = sig
+            else:
+                print("no change; scan cycle complete")
+            if not loop:
+                return 0
+            time.sleep(interval)
     except Exception as exc:  # never crash the wrapper: log and exit clean
         print(f"lte scan error: {exc!r}", file=sys.stderr)
     return 0
