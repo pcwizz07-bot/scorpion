@@ -75,7 +75,9 @@ class ObservationOut(BaseModel):
 
 
 class LteCellIn(BaseModel):
-    pci: int
+    # pci is null for energy-only (rtl_power) detections, where only the
+    # carrier frequency/power is known without coherent PCI decoding.
+    pci: int | None = None
     tac: int | None = None
     band: int | None = None
     earfcn: int | None = None
@@ -97,7 +99,7 @@ class LteCellOut(BaseModel):
     id: int
     device_id: str
     device_name: str | None
-    pci: int
+    pci: int | None
     tac: int | None
     band: int | None
     earfcn: int | None

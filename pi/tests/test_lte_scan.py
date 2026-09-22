@@ -43,10 +43,8 @@ def test_parse_rtl_power_returns_strongest_frequencies():
     peaks = parse_rtl_power(out, top_n=2)
 
     assert len(peaks) == 2
-    # Best bin: -11.0 sits in the 937e6 row at index 2 -> 937.0M + 0.2M*(2+0.5) = 937.5
-    assert peaks[0] == 937.5
-    # Second-best: -12.0 in the 935e6 row at index 2 -> 935.0 + 0.2*2.5 = 935.5
-    assert peaks[1] == 935.5
+    assert peaks[0] == (937.5, -11.0)
+    assert peaks[1] == (935.5, -12.0)
 
 
 def test_band_and_earfcn_maps_lte900_and_dcs1800():

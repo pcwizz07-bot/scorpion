@@ -37,6 +37,20 @@ def test_lte_cells_requires_auth(client):
     assert resp.status_code == 401
 
 
+def test_lte_cells_energy_only_pci_null(client, registered_device):
+    resp = client.post(
+        "/api/v1/lte/cells",
+        json={"cells": [{"freq_mhz": 944.7, "signal_dbm": -60, "band": 8, "earfcn": 3647}]},
+        headers=_device_headers(registered_device),
+    )
+    assert resp.status_code == 201, resp.text
+
+    row = client.get("/api/v1/lte/cells", headers=_device_headers(registered_device)).json()[0]
+    assert row["pci"] is None
+    assert row["freq_mhz"] == 944.7
+    assert row["signal_dbm"] == -60
+
+
 def test_lte_identity_post_and_device_list_masked(client, registered_device):
     resp = client.post(
         "/api/v1/lte/identities",

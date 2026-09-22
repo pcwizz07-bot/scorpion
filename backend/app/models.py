@@ -107,7 +107,7 @@ class LteCell(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     device_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("devices.id"), nullable=False)
-    pci: Mapped[int] = mapped_column(Integer, nullable=False)
+    pci: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tac: Mapped[int | None] = mapped_column(Integer, nullable=True)
     band: Mapped[int | None] = mapped_column(Integer, nullable=True)
     earfcn: Mapped[int | None] = mapped_column(Integer, nullable=True)
