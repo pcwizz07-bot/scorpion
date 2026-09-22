@@ -167,6 +167,23 @@ class KnownIdentityOut(BaseModel):
     created_at: datetime
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+    totp_code: str
+
+
+class LoginResponse(BaseModel):
+    token: str
+    expires_at: datetime
+    username: str
+
+
+class AuthStatusResponse(BaseModel):
+    authenticated: bool
+    username: str | None = None
+
+
 class PresenceEventIn(BaseModel):
     kind: Literal["plu", "attach", "page", "reauth"]
     tmsi_old: str | None = None

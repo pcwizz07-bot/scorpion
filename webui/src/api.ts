@@ -98,6 +98,20 @@ export type LteCell = {
   observed_at: string;
 };
 
+export type KnownIdentity = {
+  id: number;
+  kind: string;
+  label: string;
+  is_own: boolean;
+  created_at: string;
+};
+
+export type LoginResult = {
+  token: string;
+  expires_at: string;
+  username: string;
+};
+
 export const api = {
   health: () => request<Health>("/health"),
   stats: () => request<Stats>("/stats"),
@@ -110,4 +124,12 @@ export const api = {
   observations: (limit: number) => request<Observation[]>(`/observations?limit=${limit}`),
   alerts: (limit: number) => request<Alert[]>(`/alerts?limit=${limit}`),
   lteCells: (limit: number) => request<LteCell[]>(`/lte/cells?limit=${limit}`),
+  known: () => request<KnownIdentity[]>("/known"),
+  knownCreate: (body: { kind: string; value: string; label: string; is_own: boolean }) =>
+    request<KnownIdentity>("/known", { method: "POST", body: JSON.stringify(body) }),
+  knownDelete: (id: number) => request<undefined>(`/known/${id}`, { method: "DELETE" }),
+  authStatus: () => request<{ authenticated: boolean; username: string | null }>("/auth/status"),
+  authLogin: (body: { username: string; password: string; totp_code: string }) =>
+    request<LoginResult>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
+  authLogout: () => request<undefined>("/auth/logout", { method: "POST" }),
 };
